@@ -94,7 +94,7 @@ def create_chart(ticker, hist, fibs):
     return fig
 
 # --- HAUPTPROGRAMM ---
-st.title("🏛️ Portfolio & Trend Analyzer")
+st.title("🏛️ Pero Portfolio & Trend Analyzer")
 
 selected_ticker = None  # Standardmäßig auf None setzen
 
@@ -177,7 +177,7 @@ if df_port is not None:
     with c2:
         st.markdown(f'<div class="custom-info-box"><h3>Depotwert</h3><p>{total_depot_value:,.2f} €</p></div>', unsafe_allow_html=True)
     with c3:
-        st.info("**Status:**\n\nKurse sind Live von Yahoo Finance")
+        st.info("**Status:**\n\nKurse Live von Yahoo Finance")
 
     # 2. TABELLE
     st.subheader("Performance & Zeit-Trends")

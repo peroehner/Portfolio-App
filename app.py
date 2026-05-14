@@ -181,22 +181,28 @@ if df_port is not None:
 
     # 2. TABELLE
     st.subheader("Performance & Zeit-Trends")
-    summary_df = pd.DataFrame([x['data'] for x in all_results])
+
+    # Sicherstellen, dass Daten im Session State vorhanden sind
+    if 'all_results' in st.session_state and st.session_state.all_results:
+        summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
+        
+        # Formatierung definieren
+        percent_cols = ['Gewinn %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"D Target %", 'IntraDay', '3T', '5T', '1M', '6M']
+        format_dict = {col: "{:.2f}%" for col in percent_cols}
+        format_dict["D Target"] = "{:.2f} €"
+        format_dict["Preis"] = "{:.2f} €"
+        format_dict["Est Target"] = "{:.2f} €"
+
+        st.dataframe(
+            summary_df.style.format(format_dict)
+            .set_properties(**{'background-color': 'white', 'color': 'black'})
+            .background_gradient(cmap='RdYlGn', subset=percent_cols),
+            use_container_width=True
+        )    
+    else:
+        st.warning("Keine Daten zur Anzeige in der Tabelle verfügbar.") 
+        summary_df = pd.DataFrame([x['data'] for x in all_results])         
     
-    # Formatierung definieren
-    percent_cols = ['Gewinn %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"D Target %", 'IntraDay', '3T', '5T', '1M', '6M']
-    format_dict = {col: "{:.2f}%" for col in percent_cols}
-    format_dict["D Target"] = "{:.2f} €"
-    format_dict["Preis"] = "{:.2f} €"
-    format_dict["Est Target"] = "{:.2f} €"
-
-    st.dataframe(
-        summary_df.style.format(format_dict)
-        .set_properties(**{'background-color': 'white', 'color': 'black'})
-        .background_gradient(cmap='RdYlGn', subset=percent_cols),
-        use_container_width=True
-    )
-
     # --- DETAIL ANALYSE MIT STEUERUNG ---
     st.divider()
     st.subheader("🔍 Technische Detail-Analyse")

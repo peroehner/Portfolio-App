@@ -196,10 +196,10 @@ if df_port is not None:
         # Formatierung definieren
         percent_cols = ['📈 Total %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"Target %", 'IntraDay', '3T', '5T', '1M', '6M']
         format_dict = {col: "{:.2f}%" for col in percent_cols}
-        format_dict["'📈 Target"] = "{:.2f} $"
-        format_dict["Target $"] = "{:.2f} $"
-        format_dict["Est Target"] = "{:.2f} $"
-        format_dict["🌐 Price"] = "{:.2f} $"
+        format_dict["📈 Target"] = "{:.0f} $"
+        format_dict["Target $"] = "{:.0f} $"
+        format_dict["Est Target"] = "{:.0f} $"
+        format_dict["🌐 Price"] = "{:.1f} $"
         # WAS: summary_df.style.format(format_dict)
                        # Mapping der Spaltennamen
 
@@ -233,7 +233,7 @@ if df_port is not None:
             # BACKUP: Falls der Styler im Deployment immer noch zickt (z.B. wegen Bibliotheks-Konflikten)
             # zeigen wir die Tabelle ohne Schnickschnack an, damit die App nicht crashed.
             st.dataframe(summary_df, use_container_width=True)
-            st.caption(f"Hinweis: Tabellen-Styling deaktiviert ({e})")   
+            st.caption(f"Hint: Table-Styling deactivated ({e})")   
     else:
         st.warning("No data to analyze in table available.") 
         summary_df = pd.DataFrame([x['data'] for x in all_results])         

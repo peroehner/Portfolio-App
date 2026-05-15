@@ -48,6 +48,17 @@ def load_portfolio():
         st.error(f"Datei 'Sample-Portfolio.csv' nicht gefunden oder fehlerhaft: {e}")
         return None
 
+def get_exchange_rate():
+    try:
+        # Ticker für Euro/Dollar
+        fx = yf.Ticker("EURUSD=X")
+        rate = 1 / fx.history(period="1d")['Close'].iloc[-1]
+        return rate
+    except:
+        # Fallback, falls die API hakt (ungefährer Wert)
+        return 0.92
+    
+# Hauptfunktion zum Abrufen der Ticker-Daten, Trends und initiale Fibonacci-Level
 def get_ticker_data(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
 
@@ -56,22 +67,18 @@ def get_ticker_data(ticker_symbol):
     
     current_price = hist['Close'].iloc[-1]
     
-    # Sicherer Zugriff auf .info)
-    # Wir nutzen einen try-except Block, damit die App nicht crashed, wenn .info leer ist
-    
-    tGM = None
+    # Wir nutzen einen try-except Block, damit die App nicht crashed, wenn .info leer ist    
+    est_target = None
     upside = 0
     pct_change = 0
     try:
-        # Nur auf info zugreifen, wenn unbedingt nötig
         info = stock.info
         if info:
             pct_change = info.get('regularMarketChangePercent')
-            tGM = info.get('targetMeanPrice')
-            if tGM:
-                upside = ((tGM / current_price) - 1) * 100
+            est_target = info.get('targetMeanPrice')
+            if est_target:
+                upside = ((est_target / current_price) - 1) * 100
     except Exception:
-        # Falls .info komplett blockiert wird, bleibt tGM einfach None
         pass
     
     # Trends berechnen
@@ -95,7 +102,7 @@ def get_ticker_data(ticker_symbol):
         "61.8%": high - 0.618 * diff,
         "100% (Low)": low
     }
-    return current_price, tGM, upside, pct_change, trends, fibs, hist
+    return current_price, est_target, upside, pct_change, trends, fibs, hist
 
 def create_chart(ticker, hist, fibs):
     fig = go.Figure()
@@ -116,26 +123,33 @@ if df_port is not None:
         results_temp = []
         total_val_temp = 0.0
 
-        for _, row in df_port.iterrows():
-            price, tGM, upside, pct_change, trends, fibs, hist = get_ticker_data(row['Symbol'])
+        for _, row in df_port.iterrows(): # Portfolio zeilenweise durchlaufen
+            price, est_target, upside, pct_change, trends, fibs, hist = get_ticker_data(row['Symbol'])
             if price:
-                total_cost = row['Shares'] * row['CostPerShare']
+                # Ermittluung der Portfolio Werte und Currency Handling
+                cost_per_share = row['AvgCost']
+                target = row['TargetPrice']
+                if row['Currency'] == 'EUR': 
+                    # Ggf. Euro in Dollar umrechnen
+                    rate = get_exchange_rate()
+                    cost_per_share *= rate
+                    target *= rate
+                    
                 current_val = row['Shares'] * price
                 total_val_temp += current_val
                 
                 # Deine Berechnungen (Target, CAGR etc.)
-                pct = row['TargetPrice']
-                diff_abs_pct = abs(pct - price)
-                diff_per_pct = abs(pct - price) / price if price != 0 else 0
+                diff_abs_pct = abs(target - price)
+                diff_per_pct = abs(target - price) / price if price != 0 else 0
                 days_held = (datetime.now() - row['PurchaseDate']).days
                 years_held = max(days_held / 365.25, 0.01)
                 cagr = ((current_val / total_cost) ** (1 / years_held) - 1) * 100
                 
                 res = {
-                    "Symbol": row['Symbol'], "Preis": price, "Est Target": tGM,
-                    "Upside %": upside, "Change %": pct_change, "Target": pct,
-                    "D Target %": diff_per_pct * 100, "D Target": diff_abs_pct,
-                    "Gewinn %": ((current_val/total_cost)-1)*100, "Ø Jahr % (CAGR)": cagr
+                    "Symbol": row['Symbol'], "Price": price, "Est Target": est_target,
+                    "Upside %": upside, "Change %": pct_change, "Target": target,
+                    "Target %": diff_per_pct * 100, "Target": diff_abs_pct,
+                    "Total %": ((current_val/total_cost)-1)*100, "Ø Jahr % (CAGR)": cagr
                 }
                 res.update(trends)
                 results_temp.append({"data": res, "fibs": fibs, "hist": hist})
@@ -166,11 +180,11 @@ if df_port is not None:
         summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
         
         # Formatierung definieren
-        percent_cols = ['Gewinn %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"D Target %", 'IntraDay', '3T', '5T', '1M', '6M']
+        percent_cols = ['Total %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"Target %", 'IntraDay', '3T', '5T', '1M', '6M']
         format_dict = {col: "{:.2f}%" for col in percent_cols}
-        format_dict["D Target"] = "{:.2f} €"
-        format_dict["Preis"] = "{:.2f} €"
-        format_dict["Est Target"] = "{:.2f} €"
+        format_dict["Target"] = "{:.2f} $"
+        format_dict["Price"] = "{:.2f} $"
+        format_dict["Est Target"] = "{:.2f} $"
         # WAS: summary_df.style.format(format_dict)
 
         # --- FORMATIERUNG samt FEHLER-PRÄVENTION ---
@@ -296,7 +310,7 @@ if df_port is not None:
                 
                 with col_right:
                     st.write(f"### Details: {selected_ticker}")
-                    curr_p = pick['data']['Preis']
+                    curr_p = pick['data']['Price']
                     
                     # KPI Metric (Target Price)
                     try:

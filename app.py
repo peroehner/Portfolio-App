@@ -48,9 +48,10 @@ def load_portfolio():
         st.error(f"Datei 'Sample-Portfolio.csv' nicht gefunden oder fehlerhaft: {e}")
         return None
 
-def get_data(ticker_symbol):
+def get_ticker_data(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
-    hist = stock.history(period="12mo") # Puffer für 12M Trends
+
+    hist = stock.history(period="3y") # 3 Jahre laden
     if hist.empty: return None, None, None, None
     
     current_price = hist['Close'].iloc[-1]
@@ -70,10 +71,10 @@ def get_data(ticker_symbol):
         "6M": ((current_price / hist['Close'].iloc[0]) - 1) * 100
     }
     
-    # Fibonacci Level (6 Monate)
-    hist_6m = hist.iloc[-196:] # ca. 6 Handelsmonate
-    high = hist_6m['High'].max()
-    low = hist_6m['Low'].min()
+    # Init Fibonacci Level (12 Monate)
+    hist_12m = hist.iloc[-21*12:] # ca. 12 Handelsmonate
+    high = hist_12m['High'].max()
+    low = hist_12m['Low'].min()
     diff = high - low
     fibs = {
         "0% (High)": high,
@@ -82,7 +83,7 @@ def get_data(ticker_symbol):
         "61.8%": high - 0.618 * diff,
         "100% (Low)": low
     }
-    return current_price, tGM, upside, pct_change, trends, fibs, hist_6m
+    return current_price, tGM, upside, pct_change, trends, fibs, hist
 
 def create_chart(ticker, hist, fibs):
     fig = go.Figure()
@@ -96,8 +97,6 @@ def create_chart(ticker, hist, fibs):
 # --- HAUPTPROGRAMM ---
 st.title("🏛️ Pero Portfolio & Trend Analyzer")
 
-selected_ticker = None  # Standardmäßig auf None setzen
-
 df_port = load_portfolio()
 if df_port is not None:
     # WICHTIG: Prüfen, ob Daten schon da sind, sonst laden
@@ -106,7 +105,7 @@ if df_port is not None:
         total_val_temp = 0.0
 
         for _, row in df_port.iterrows():
-            price, tGM, upside, pct_change, trends, fibs, hist = get_data(row['Symbol'])
+            price, tGM, upside, pct_change, trends, fibs, hist = get_ticker_data(row['Symbol'])
             if price:
                 total_cost = row['Shares'] * row['CostPerShare']
                 current_val = row['Shares'] * price
@@ -138,38 +137,6 @@ if df_port is not None:
     all_results = st.session_state.all_results
     total_depot_value = st.session_state.total_depot_value
 
-    # Datenverarbeitung
-    for _, row in df_port.iterrows():
-        price, tGM, upside, pct_change, trends, fibs, hist = get_data(row['Symbol'])
-        if price:
-            total_cost = row['Shares'] * row['CostPerShare']
-            current_val = row['Shares'] * price
-            total_depot_value += current_val
-            
-            pct = row['TargetPrice']
-            diff_abs_pct = abs(pct - price)
-            diff_per_pct = abs(pct - price) / price if price != 0 else 0
-
-
-            days_held = (datetime.now() - row['PurchaseDate']).days
-            years_held = max(days_held / 365.25, 0.01)
-            cagr = ((current_val / total_cost) ** (1 / years_held) - 1) * 100
-            
-            res = {
-                "Symbol": row['Symbol'],
-                "Preis": price,
-                "Est Target": tGM,
-                "Upside %": upside,
-                "Change %": pct_change,
-                "Target": pct,
-                "D Target %": diff_per_pct * 100,
-                "D Target": diff_abs_pct,
-                "Gewinn %": ((current_val/total_cost)-1)*100,
-                "Ø Jahr % (CAGR)": cagr
-            }
-            res.update(trends)
-            all_results.append({"data": res, "fibs": fibs, "hist": hist})
-
     # 1. KPI DASHBOARD
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -182,7 +149,7 @@ if df_port is not None:
     # 2. TABELLE
     st.subheader("Performance & Zeit-Trends")
 
-    # Sicherstellen, dass Daten im Session State vorhanden sind
+    # Formattierung nach Sicherstellung vorhandener Daten im Session State
     if 'all_results' in st.session_state and st.session_state.all_results:
         summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
         
@@ -207,8 +174,9 @@ if df_port is not None:
     st.divider()
     st.subheader("🔍 Technische Detail-Analyse")
 
-    # 1. Ticker-Liste aus den Ergebnissen ziehen (Wir nutzen all_results aus dem Session State)
+    # 1. Ticker-Liste aus den Ergebnissen im Session State holen
     ticker_liste = st.session_state.get('ticker_liste', [])
+    #selected_ticker = None  # Standardmäßig auf None setzen
 
     # Sicherstellen, dass die Liste existiert
     if ticker_liste:
@@ -219,9 +187,11 @@ if df_port is not None:
         # 3. Funktionen (Callbacks)
         def move_next():
             st.session_state.ticker_index = (st.session_state.ticker_index + 1) % len(ticker_liste)
+            st.session_state.sb_selector = ticker_liste[st.session_state.ticker_index]  # Synchronisieren mit Selectbox
 
         def move_prev():
             st.session_state.ticker_index = (st.session_state.ticker_index - 1) % len(ticker_liste)
+            st.session_state.sb_selector = ticker_liste[st.session_state.ticker_index]  # Synchronisieren mit Selectbox
         
         def sync_index():
             # Wenn der User die Liste nutzt, aktualisieren wir den Index
@@ -238,48 +208,86 @@ if df_port is not None:
             st.button("Weiter ➡️", on_click=move_next, key="nav_next", use_container_width=True)
 
         with col_select:
-            # WICHTIG: Die Selectbox definiert hier den selected_ticker
-            selected_ticker = st.selectbox(
+            st.selectbox(
                 "Symbol",
                 options=ticker_liste,
-                index=st.session_state.ticker_index, # Gesteuert durch Buttons
+                index=st.session_state.ticker_index,
                 key="sb_selector",
                 on_change=sync_index,
                 label_visibility="collapsed"
             )
 
-        # KRITISCH: Wir erzwingen, dass selected_ticker immer zum Index passt
-        # Falls der Button geklickt wurde, nehmen wir den Wert direkt aus der Liste
-        selected_ticker = ticker_liste[st.session_state.ticker_index]
-
-        # 5. Anzeige-Logik (Eingerückt innerhalb von "if df_port is not None")
-        pick = next((item for item in st.session_state.all_results if item['data']['Symbol'] == selected_ticker), None) 
+        # 5. Detail Anzeige für ausgewählten Wert und Zeitraum
+        pick = next((item for item in st.session_state.all_results if item['data']['Symbol'] == ticker_liste[st.session_state.ticker_index]), None) 
         
         if pick:
-            col_left, col_right = st.columns([2, 1])
-            
-            st.write(f"### {selected_ticker}")
+            hist_full = pick['hist'] # Die kompletten 3 Jahre
+            selected_ticker = pick['data']['Symbol']
 
-            with col_left:
-                st.plotly_chart(create_chart(selected_ticker, pick['hist'], pick['fibs']), use_container_width=True)
+            # --- ZEITRAUM STEUERUNG ---
+            st.write("### 📅 Analyse-Zeitraum ")
             
-            with col_right:
-                st.write(f"### {selected_ticker}")
-                curr_p = pick['data']['Preis']
+            # Verfügbare Monate extrahieren
+            available_months = hist_full.index.to_period('M').unique()
+            month_options = [d.strftime('%Y-%m') for d in available_months]
+            
+            # Defaults berechnen (Ende = Jetzt, Start = vor 12 Monaten)
+            idx_end = len(month_options) - 1
+            idx_start = max(0, idx_end - 12)
+            
+            col_date1, col_date2 = st.columns(2)
+            with col_date1:
+                sel_start = st.selectbox("Start-Monat", options=month_options, index=idx_start)
+            with col_date2:
+                sel_end = st.selectbox("End-Monat", options=month_options, index=idx_end)
+            
+            # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
+            # Filtern der Daten auf den gewählten Bereich
+            mask = (hist_full.index >= sel_start) & (hist_full.index <= sel_end)
+            hist_filtered = hist_full.loc[mask]
+            
+            if not hist_filtered.empty:
+                h = hist_filtered['High'].max()
+                l = hist_filtered['Low'].min()
+                d = h - l
                 
-                try:
-                    s_obj = yf.Ticker(selected_ticker)
-                    target = s_obj.info.get('targetMeanPrice')
-                    if target:
-                        upside_val = ((target / curr_p) - 1) * 100
-                        st.metric("1Y Target Estimate", f"{target:.2f} €", f"{upside_val:.1f}% Upside")
-                except:
-                    st.caption("Kein Analysten-Target verfügbar")
+                dynamic_fibs = {
+                    "0% (High)": h,
+                    "38.2%": h - 0.382 * d,
+                    "50.0%": h - 0.5 * d,
+                    "61.8%": h - 0.618 * d,
+                    "100% (Low)": l
+                }
 
-                st.write("**Fibonacci Level (6M):**")
-                for label, val in pick['fibs'].items():
-                    diff_pct = abs(curr_p - val) / val * 100
-                    if diff_pct < 2:
-                        st.warning(f"🎯 {label}: {val:.2f}")
-                    else:
-                        st.write(f"⚪ {label}: {val:.2f}")
+                # --- AUSGABE IN DEN ZWEI SPALTEN ---
+                col_left, col_right = st.columns([2, 1])
+                
+                with col_left:
+                    # Der Chart nutzt jetzt die gefilterten Daten und die neuen Fibs
+                    st.plotly_chart(create_chart(selected_ticker, hist_filtered, dynamic_fibs), use_container_width=True)
+                
+                with col_right:
+                    st.write(f"### Details: {selected_ticker}")
+                    curr_p = pick['data']['Preis']
+                    
+                    # KPI Metric (Target Price)
+                    try:
+                        s_obj = yf.Ticker(selected_ticker)
+                        target = s_obj.info.get('targetMeanPrice')
+                        if target:
+                            up_val = ((target / curr_p) - 1) * 100
+                            st.metric("1Y Target Estimate", f"{target:.2f} €", f"{up_val:.1f}% Upside")
+                    except:
+                        st.caption("Analysten-Target nicht abrufbar")
+
+                    # Dynamische Fibonacci Liste
+                    st.write(f"**Fibonacci (Zeitraum: {sel_start} bis {sel_end})**")
+                    for label, val in dynamic_fibs.items():
+                        # Optische Markierung, wenn der Kurs nah an einem Level ist
+                        prox = abs(curr_p - val) / val * 100
+                        if prox < 1.5:
+                            st.warning(f"🎯 **{label}: {val:.2f}**")
+                        else:
+                            st.write(f"⚪ {label}: {val:.2f}")
+            else:
+                st.error("Keine Daten für diesen Zeitraum verfügbar.")      

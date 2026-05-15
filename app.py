@@ -5,7 +5,21 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # --- KONFIGURATION & THEME ---
-st.set_page_config(page_title="Portfolio Architektur Pro", layout="wide")
+st.set_page_config(
+        page_title="Portfolio Architektur Pro",
+        page_icon="myPeroLogo.png",
+        layout="wide"
+        )
+
+st.markdown(
+    """
+    <head>
+        <link rel="apple-touch-icon" sizes="180x180" href="myPeroLogo.png">
+        <link rel="apple-touch-startup-image" href="myPeroLogo.png">
+    </head>
+    """,
+    unsafe_allow_html=True
+)
 
 # Zentrales CSS für Lesbarkeit und Box-Design
 st.markdown("""
@@ -83,9 +97,9 @@ def get_ticker_data(ticker_symbol):
     
     # Trends berechnen
     trends = {
-        "IntraDay": (pct_change)  * 1  if pct_change is not None else 0,
-        "3T": ((current_price / hist['Close'].iloc[-3]) - 1) * 100 if len(hist) >= 3 else 0,
-        "5T": ((current_price / hist['Close'].iloc[-5]) - 1) * 100 if len(hist) >= 5 else 0,
+        "1D": (pct_change)  * 1  if pct_change is not None else 0,
+        "3D": ((current_price / hist['Close'].iloc[-3]) - 1) * 100 if len(hist) >= 3 else 0,
+        "5D": ((current_price / hist['Close'].iloc[-5]) - 1) * 100 if len(hist) >= 5 else 0,
         "1M": ((current_price / hist['Close'].iloc[-21]) - 1) * 100 if len(hist) >= 21 else 0,
         "6M": ((current_price / hist['Close'].iloc[0]) - 1) * 100
     }
@@ -158,7 +172,7 @@ if df_port is not None:
                     "Est Target": est_target, "Upside %": upside, 
                     "📈 Target": target,
                     "Target %": diff_target_pct * 100, "Target $": diff_target_abs,
-                    "📈 Total %": ((current_val/current_cost)-1)*100, "Ø Jahr % (CAGR)": cagr
+                    "📈 Total %": ((current_val/current_cost)-1)*100, "Ø CAGR": cagr
                 }
                 res.update(trends)
                 results_temp.append({"data": res, "fibs": fibs, "hist": hist})
@@ -194,7 +208,7 @@ if df_port is not None:
         summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
         
         # Formatierung definieren
-        percent_cols = ['📈 Total %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"Target %", 'IntraDay', '3T', '5T', '1M', '6M']
+        percent_cols = ['📈 Total %', 'Change %', 'Upside %', 'Ø CAGR',"Target %", '1D', '3D', '5D', '1M', '6M']
         format_dict = {col: "{:.2f}%" for col in percent_cols}
         format_dict["📈 Target"] = "{:.0f} $"
         format_dict["Target $"] = "{:.0f} $"

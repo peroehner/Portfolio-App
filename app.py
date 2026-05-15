@@ -45,7 +45,7 @@ def load_portfolio():
         df['PurchaseDate'] = pd.to_datetime(df['PurchaseDate'])
         return df
     except Exception as e:
-        st.error(f"Datei 'Sample-Portfolio.csv' nicht gefunden oder fehlerhaft: {e}")
+        st.error(f"Datei 'Sample-Portfolio.csv' not found or corrupt: {e}")
         return None
 
 def get_exchange_rate():
@@ -121,7 +121,9 @@ if df_port is not None:
     # WICHTIG: Prüfen, ob Daten schon da sind, sonst laden
     if 'all_results' not in st.session_state:
         results_temp = []
-        total_val_temp = 0.0
+        total_depot_value = 0.0
+        total_depot_cost = 0.0
+        total_depot_target = 0.0    
 
         for _, row in df_port.iterrows(): # Portfolio zeilenweise durchlaufen
             price, est_target, upside, pct_change, trends, fibs, hist = get_ticker_data(row['Symbol'])
@@ -132,32 +134,40 @@ if df_port is not None:
                 if row['Currency'] == 'EUR': 
                     # Ggf. Euro in Dollar umrechnen
                     rate = get_exchange_rate()
-                    cost_per_share *= rate
-                    target *= rate
+                    cost_per_share /= rate
+                    target /= rate
                     
                 current_val = row['Shares'] * price
-                total_val_temp += current_val
-                total_cost = row['Shares'] * cost_per_share
-                
+                current_cost = row['Shares'] * cost_per_share
+                current_target = row['Shares'] * target
+
+                # Deopt Summen für Gesamtübersicht 
+                total_depot_value  += current_val
+                total_depot_cost   += current_cost
+                total_depot_target += current_target
+
                 # Deine Berechnungen (Target, CAGR etc.)
-                diff_abs_pct = abs(target - price)
-                diff_per_pct = abs(target - price) / price if price != 0 else 0
+                diff_target_abs = abs(target - price)
+                diff_target_pct = abs(target - price) / price if price != 0 else 0
                 days_held = (datetime.now() - row['PurchaseDate']).days
                 years_held = max(days_held / 365.25, 0.01)
-                cagr = ((current_val / total_cost) ** (1 / years_held) - 1) * 100
+                cagr = ((current_val / current_cost) ** (1 / years_held) - 1) * 100
                 
-                res = {
-                    "Symbol": row['Symbol'], "Price": price, "Est Target": est_target,
-                    "Upside %": upside, "Change %": pct_change, "Target": target,
-                    "Target %": diff_per_pct * 100, "Target": diff_abs_pct,
-                    "Total %": ((current_val/total_cost)-1)*100, "Ø Jahr % (CAGR)": cagr
+                res = { # NB - defines columns order in the final table - left to right
+                    "Symbol": row['Symbol'], "🌐 Price": price, "Change %": pct_change, 
+                    "Est Target": est_target, "Upside %": upside, 
+                    "📈 Target": target,
+                    "Target %": diff_target_pct * 100, "Target $": diff_target_abs,
+                    "📈 Total %": ((current_val/current_cost)-1)*100, "Ø Jahr % (CAGR)": cagr
                 }
                 res.update(trends)
                 results_temp.append({"data": res, "fibs": fibs, "hist": hist})
 
         # Jetzt alles in den Session State schreiben
         st.session_state.all_results = results_temp
-        st.session_state.total_depot_value = total_val_temp
+        st.session_state.total_depot_value = total_depot_value
+        st.session_state.total_depot_cost = total_depot_cost
+        st.session_state.total_depot_target = total_depot_target
         st.session_state.ticker_liste = [x['data']['Symbol'] for x in results_temp]
 
     # Ab hier nutzen wir NUR NOCH den Session State für die Anzeige
@@ -165,28 +175,43 @@ if df_port is not None:
     total_depot_value = st.session_state.total_depot_value
 
     # 1. KPI DASHBOARD
+    st.subheader("Depot Metrics & Status")
+    st.caption(f"✨ **{len(df_port):,} Symbols** in Portfolio • Source: Live from Yahoo Finance •")
+
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(f'<div class="custom-info-box"><h3>Anzahl Werte</h3><p>{len(df_port)}</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="custom-info-box"><h3>Actual</h3><p>{st.session_state.total_depot_value:,.0f} $</p></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="custom-info-box"><h3>Depotwert</h3><p>{total_depot_value:,.2f} $</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="custom-info-box"><h3>Cost</h3><p>{st.session_state.total_depot_cost:,.0f} $</p></div>', unsafe_allow_html=True)
     with c3:
-        st.info("**Status:**\n\nKurse Live von Yahoo Finance")
+        st.markdown(f'<div class="custom-info-box"><h3>Target</h3><p>{st.session_state.total_depot_target:,.0f} $</p></div>', unsafe_allow_html=True)        
 
     # 2. TABELLE
-    st.subheader("Performance & Zeit-Trends")
+    st.subheader("Performance & Trends")
  
     # Formattierung nach Sicherstellung vorhandener Daten im Session State
     if 'all_results' in st.session_state and len(st.session_state.all_results) > 0:
         summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
         
         # Formatierung definieren
-        percent_cols = ['Total %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"Target %", 'IntraDay', '3T', '5T', '1M', '6M']
+        percent_cols = ['📈 Total %', 'Change %', 'Upside %', 'Ø Jahr % (CAGR)',"Target %", 'IntraDay', '3T', '5T', '1M', '6M']
         format_dict = {col: "{:.2f}%" for col in percent_cols}
-        format_dict["Target"] = "{:.2f} $"
-        format_dict["Price"] = "{:.2f} $"
+        format_dict["'📈 Target"] = "{:.2f} $"
+        format_dict["Target $"] = "{:.2f} $"
         format_dict["Est Target"] = "{:.2f} $"
+        format_dict["🌐 Price"] = "{:.2f} $"
         # WAS: summary_df.style.format(format_dict)
+                       # Mapping der Spaltennamen
+
+        # Nur diese Spalten erhalten ein "Tag"
+        special_headers = {
+        'Symbol': '📄 Symbol',
+        'Preis': '🌐 Preis',
+        'Target': '📈 Target'
+        }
+        # .rename() ändert nur die Treffer im Dictionary
+        # styled_df = summary_df.rename(columns=special_headers)
+        # summary_df = st.dataframe(styled_df)
 
         # --- FORMATIERUNG samt FEHLER-PRÄVENTION ---
         # 1. Nur Spalten formatieren, die auch wirklich im DF existieren
@@ -210,12 +235,12 @@ if df_port is not None:
             st.dataframe(summary_df, use_container_width=True)
             st.caption(f"Hinweis: Tabellen-Styling deaktiviert ({e})")   
     else:
-        st.warning("Keine Daten zur Anzeige in der Tabelle verfügbar.") 
+        st.warning("No data to analyze in table available.") 
         summary_df = pd.DataFrame([x['data'] for x in all_results])         
     
     # --- DETAIL ANALYSE MIT STEUERUNG ---
     st.divider()
-    st.subheader("🔍 Technische Detail-Analyse")
+    st.subheader("🔍 Technical Detail-Analysis")
 
     # 1. Ticker-Liste aus den Ergebnissen im Session State holen
     ticker_liste = st.session_state.get('ticker_liste', [])
@@ -245,10 +270,10 @@ if df_port is not None:
         col_prev, col_select, col_next = st.columns([1, 3, 1])
         
         with col_prev:
-            st.button("⬅️ Zurück", on_click=move_prev, key="nav_prev", use_container_width=True)
+            st.button("⬅️ Prev", on_click=move_prev, key="nav_prev", use_container_width=True)
 
         with col_next:
-            st.button("Weiter ➡️", on_click=move_next, key="nav_next", use_container_width=True)
+            st.button("Next ➡️", on_click=move_next, key="nav_next", use_container_width=True)
 
         with col_select:
             st.selectbox(
@@ -268,7 +293,7 @@ if df_port is not None:
             selected_ticker = pick['data']['Symbol']
 
             # --- ZEITRAUM STEUERUNG ---
-            st.write("### 📅 Analyse-Zeitraum ")
+            st.write("### 📅 Analyze in time frame")
             
             # Verfügbare Monate extrahieren
             available_months = hist_full.index.to_period('M').unique()
@@ -278,12 +303,13 @@ if df_port is not None:
             idx_end = len(month_options) - 1
             idx_start = max(0, idx_end - 12)
             
-            col_date1, col_date2 = st.columns(2)
-            with col_date1:
-                sel_start = st.selectbox("Start-Monat", options=month_options, index=idx_start)
-            with col_date2:
-                sel_end = st.selectbox("End-Monat", options=month_options, index=idx_end)
-            
+            cols = st.columns([0.5, 1.5, 0.5, 1.5], vertical_alignment="center")
+
+            cols[0].markdown("**Start**")
+            sel_start = cols[1].selectbox("Start", options=month_options, index=0, label_visibility="collapsed")
+            cols[2].markdown("**End**")
+            sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")  
+           
             # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
             # Filtern der Daten auf den gewählten Bereich
             mask = (hist_full.index >= sel_start) & (hist_full.index <= sel_end)
@@ -311,7 +337,7 @@ if df_port is not None:
                 
                 with col_right:
                     st.write(f"### Details: {selected_ticker}")
-                    curr_p = pick['data']['Price']
+                    curr_p = pick['data']['🌐 Price']
                     
                     # KPI Metric (Target Price)
                     try:
@@ -319,12 +345,12 @@ if df_port is not None:
                         target = s_obj.info.get('targetMeanPrice')
                         if target:
                             up_val = ((target / curr_p) - 1) * 100
-                            st.metric("1Y Target Estimate", f"{target:.2f} $", f"{up_val:.1f}% Upside")
+                            st.metric("1Y Target Estimate", f"{target:.2f} $", f"From {curr_p:.1f}$ {up_val:.1f}% Upside")
                     except:
-                        st.caption("Analysten-Target nicht abrufbar")
+                        st.caption("Analyst-Target not available")
 
                     # Dynamische Fibonacci Liste
-                    st.write(f"**Fibonacci (Zeitraum: {sel_start} bis {sel_end})**")
+                    st.write(f"**Fibonacci (from {sel_start} to {sel_end})**")
                     for label, val in dynamic_fibs.items():
                         # Optische Markierung, wenn der Kurs nah an einem Level ist
                         prox = abs(curr_p - val) / val * 100
@@ -333,4 +359,4 @@ if df_port is not None:
                         else:
                             st.write(f"⚪ {label}: {val:.2f}")
             else:
-                st.error("Keine Daten für diesen Zeitraum verfügbar.")      
+                st.error("No data available for this time frame.")      

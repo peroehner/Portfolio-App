@@ -160,9 +160,9 @@ if df_port is not None:
 
     # 2. TABELLE
     st.subheader("Performance & Zeit-Trends")
-
+ 
     # Formattierung nach Sicherstellung vorhandener Daten im Session State
-    if 'all_results' in st.session_state and st.session_state.all_results:
+    if 'all_results' in st.session_state and len(st.session_state.all_results) > 0:
         summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
         
         # Formatierung definieren
@@ -171,13 +171,29 @@ if df_port is not None:
         format_dict["D Target"] = "{:.2f} €"
         format_dict["Preis"] = "{:.2f} €"
         format_dict["Est Target"] = "{:.2f} €"
+        # WAS: summary_df.style.format(format_dict)
 
-        st.dataframe(
-            summary_df.style.format(format_dict)
-            .set_properties(**{'background-color': 'white', 'color': 'black'})
-            .background_gradient(cmap='RdYlGn', subset=percent_cols),
-            use_container_width=True
-        )    
+        # --- FORMATIERUNG samt FEHLER-PRÄVENTION ---
+        # 1. Nur Spalten formatieren, die auch wirklich im DF existieren
+        actual_format_dict = {k: v for k, v in format_dict.items() if k in summary_df.columns}
+        
+        # 2. Sicherstellen, dass keine NaN-Werte in den Prozent-Spalten das Gradient-Rendering stören
+        safe_percent_cols = [c for c in percent_cols if c in summary_df.columns]
+        summary_df[safe_percent_cols] = summary_df[safe_percent_cols].fillna(0)
+
+        try:
+            # Versuche die schicke Formatierung
+            st.dataframe(
+                summary_df.style.format(actual_format_dict, na_rep='-')
+                .set_properties(**{'background-color': 'white', 'color': 'black'})
+                .background_gradient(cmap='RdYlGn', subset=safe_percent_cols),
+                use_container_width=True
+            )
+        except Exception as e:
+            # BACKUP: Falls der Styler im Deployment immer noch zickt (z.B. wegen Bibliotheks-Konflikten)
+            # zeigen wir die Tabelle ohne Schnickschnack an, damit die App nicht crashed.
+            st.dataframe(summary_df, use_container_width=True)
+            st.caption(f"Hinweis: Tabellen-Styling deaktiviert ({e})")   
     else:
         st.warning("Keine Daten zur Anzeige in der Tabelle verfügbar.") 
         summary_df = pd.DataFrame([x['data'] for x in all_results])         

@@ -169,7 +169,7 @@ if df_port is not None:
     with c1:
         st.markdown(f'<div class="custom-info-box"><h3>Anzahl Werte</h3><p>{len(df_port)}</p></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="custom-info-box"><h3>Depotwert</h3><p>{total_depot_value:,.2f} €</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="custom-info-box"><h3>Depotwert</h3><p>{total_depot_value:,.2f} $</p></div>', unsafe_allow_html=True)
     with c3:
         st.info("**Status:**\n\nKurse Live von Yahoo Finance")
 
@@ -319,7 +319,7 @@ if df_port is not None:
                         target = s_obj.info.get('targetMeanPrice')
                         if target:
                             up_val = ((target / curr_p) - 1) * 100
-                            st.metric("1Y Target Estimate", f"{target:.2f} €", f"{up_val:.1f}% Upside")
+                            st.metric("1Y Target Estimate", f"{target:.2f} $", f"{up_val:.1f}% Upside")
                     except:
                         st.caption("Analysten-Target nicht abrufbar")
 

@@ -55,12 +55,24 @@ def get_ticker_data(ticker_symbol):
     if hist.empty: return None, None, None, None
     
     current_price = hist['Close'].iloc[-1]
-    pct_change = stock.info.get('regularMarketChangePercent')
-    # print(f"Veränderung: {pct_change}%")
-
-    # Analysten-Daten abrufen
-    tGM = stock.info.get('targetMeanPrice')
-    upside = ((tGM / current_price ) - 1) * 100
+    
+    # Sicherer Zugriff auf .info)
+    # Wir nutzen einen try-except Block, damit die App nicht crashed, wenn .info leer ist
+    
+    tGM = None
+    upside = 0
+    pct_change = 0
+    try:
+        # Nur auf info zugreifen, wenn unbedingt nötig
+        info = stock.info
+        if info:
+            pct_change = info.get('regularMarketChangePercent')
+            tGM = info.get('targetMeanPrice')
+            if tGM:
+                upside = ((tGM / current_price) - 1) * 100
+    except Exception:
+        # Falls .info komplett blockiert wird, bleibt tGM einfach None
+        pass
     
     # Trends berechnen
     trends = {

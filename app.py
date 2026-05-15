@@ -63,7 +63,7 @@ def get_ticker_data(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
 
     hist = stock.history(period="3y") # 3 Jahre laden
-    if hist.empty: return None, None, None, None
+    if hist.empty: return None, None, None, None, None, None, None
     
     current_price = hist['Close'].iloc[-1]
     
@@ -137,6 +137,7 @@ if df_port is not None:
                     
                 current_val = row['Shares'] * price
                 total_val_temp += current_val
+                total_cost = row['Shares'] * cost_per_share
                 
                 # Deine Berechnungen (Target, CAGR etc.)
                 diff_abs_pct = abs(target - price)

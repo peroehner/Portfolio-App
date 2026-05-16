@@ -366,7 +366,7 @@ if df_port is not None:
             trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
 
             # --- ZEITRAUM STEUERUNG ---
-            st.write("### 📅 Analyze in time frame")
+            st.write(f"### 📅 {selected_ticker} - Analyze in time frame")
 
             # Verfügbare Monate extrahieren
             available_months = hist_full.index.to_period('M').unique()
@@ -424,7 +424,7 @@ if df_port is not None:
                     st.plotly_chart(create_chart(selected_ticker, hist_filtered, dynamic_fibs), use_container_width=True)
                 
                 with col_right:
-                    st.write(f"### Details: {selected_ticker}")
+                    st.write(f"### {selected_ticker} - Key Metrics")
                     curr_p = pick['data']['🌐 Price']
                     
                     # KPI Metric (Target Price)

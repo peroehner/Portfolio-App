@@ -269,7 +269,7 @@ if df_port is not None:
         safe_percent_cols = [c for c in percent_cols if c in summary_df.columns]
         summary_df[safe_percent_cols] = summary_df[safe_percent_cols].fillna(0)
 
-        try:
+        try: # TABLE VIEW  
             # Versuche die schicke Formatierung
             st.dataframe(
                 summary_df.style.format(actual_format_dict, na_rep='-')
@@ -293,7 +293,7 @@ if df_port is not None:
     # Ticker-Liste aus den Ergebnissen im Session State holen
     ticker_liste = st.session_state.get('ticker_liste', [])
 
-    # Sicherstellen, dass die Liste existiert
+    # Sicherstellen, dass die Ticker Liste existiert
     if ticker_liste:
         # Session State Index initialisieren
         if 'ticker_index' not in st.session_state:
@@ -313,9 +313,8 @@ if df_port is not None:
             val = st.session_state.sb_selector
             st.session_state.ticker_index = ticker_liste.index(val)
 
-        # Navigations-UI
+        # Navigations Select Box and Buttons
         col_prev, col_select, col_next = st.columns([1, 3, 1])
-        
         with col_prev:
             st.button("⬅️ Prev", on_click=move_prev, key="nav_prev", use_container_width=True)
 
@@ -342,10 +341,6 @@ if df_port is not None:
 
             selected_ticker = pick['data']['Symbol']
 
-            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG in HIST_FULL ---
-            f_start, f_end, price_start, price_end, f_strong_trend = find_latest_fibonacci_trend(hist_full)
-            f_trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
-
             # --- ZEITRAUM STEUERUNG ---
             st.write(f"### 📅 {selected_ticker} - Analyze in time frame")
 
@@ -354,11 +349,11 @@ if df_port is not None:
             month_options = [d.strftime('%Y-%m') for d in available_months]
             idx_end = len(month_options) - 1 # Letzter Monat als Default-Ende
 
-            # sel_start sel_end im Session State und mit UI Controls verknüpfen - somit auf unterschiedlichste Weise Manipulierbar
-            if "sel_start" not in st.session_state and len(month_options) > 0:
-                st.session_state["sel_start"] = month_options[0]   # oldest month
-            if "sel_end" not in st.session_state and len(month_options) > 0:
-                st.session_state["sel_end"] = month_options[-1]   # youngest month
+            # plot_start plot_end im Session State - UI Controls Steuerung
+            if "plot_start" not in st.session_state and len(month_options) > 0:
+                st.session_state["plot_start"] = month_options[0]   # oldest month
+            if "plot_end" not in st.session_state and len(month_options) > 0:
+                st.session_state["plot_end"] = month_options[-1]   # youngest month
 
             # User define Time Window
             cols = st.columns([0.5, 1.5, 0.5, 1.5, 1.5], vertical_alignment="center")
@@ -367,36 +362,52 @@ if df_port is not None:
             cols[2].markdown("**End**")
             sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")
 
-            # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
-            # Sonderbehandlung last day of sel_end aus Monat ermitteln
-            last_day_sel_end = pd.to_datetime(sel_end) + pd.offsets.MonthEnd(0)
-            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
-            final_end = min(last_day_sel_end, today)
+            if cols[4].button(f"🔍 Analyse", key="analyze_trend_btn", use_container_width=True):
+                st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= pd.to_datetime(sel_end))
+                st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
 
-            # Falls Fibonacci trend erkannt 
-            if f_strong_trend:
+            # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
+
+            # PLOTLY vorbereiten: Daten auf den gewählten Zeitraum filtern            
+            
+            # Sonderbehandlung last day wg, Plotly 
+            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
+            last_day_sel_end = pd.to_datetime(sel_end) + pd.offsets.MonthEnd(0)
+            final_end = min(last_day_sel_end, today)
+            
+            st.session_state["plot_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
+            st.session_state["plot_hist"] = hist_full.loc[st.session_state["plot_mask"]]
+
+            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG in FILTERED / HIST_FULL ---
+            if "fib_mask" not in st.session_state:
+                st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
+                st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
+
+            fib_start, fib_end, fib_price_start, fib_price_end, fib_strong_trend = find_latest_fibonacci_trend(st.session_state["fib_hist"])
+            fib_trend_type = "Bullish" if fib_price_start < fib_price_end else "Bearish"
+
+            if fib_strong_trend:
                 cols = st.columns([3, 1],   vertical_alignment="center")
-                cols[0].info(f"🤖 **{f_trend_type}** trend detected in range {f_start.strftime('%Y-%m-%d')} bis {f_end.strftime('%Y-%m-%d')}")
+                if fib_trend_type == "Bullish":
+                    cols[0].info(f"🚀 **{fib_trend_type}** trend detected in range {fib_start.strftime('%Y-%m-%d')} bis {fib_end.strftime('%Y-%m-%d')}")
+                else:
+                    cols[0].info(f"🤖 **{fib_trend_type}** trend detected in range {fib_start.strftime('%Y-%m-%d')} bis {fib_end.strftime('%Y-%m-%d')}")
                 # Wenn der User auf den Button klickt, aktualisieren wir den Zeitraum auf den erkannten Trend für die weitere Analyse
                 if cols[1].button(f"🔍 Inspect Range", key="inspect_trend_btn", use_container_width=True):
-                        ins_sel_start = f_start.strftime('%Y-%m-%d')
-                        ins_sel_end = f_end.strftime('%Y-%m-%d') 
-                        # check Trend in user specified Time Frame - hist_filtered
-                        ins_sel_start, ins_sel_end, ins_price_start, ins_price_end, ins_strong_trend = find_latest_fibonacci_trend(hist_full)
-                        ins_trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
-                        if ins_strong_trend:
-                            sel_start = ins_sel_start.strftime('%Y-%m-%d')
-                            sel_end = ins_sel_end.strftime('%Y-%m-%d')
-                            final_end = ins_sel_end
-                            
-            # Plotly vorbereiten: Daten auf den gewählten Zeitraum filtern            
-            mask = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
-            hist_filtered = hist_full.loc[mask]
-
+                    fib_start = fib_start.strftime('%Y-%m-%d')
+                    fib_end = fib_end.strftime('%Y-%m-%d')
+                    st.session_state["plot_mask"] = (hist_full.index >= pd.to_datetime(fib_start)) & (hist_full.index <= pd.to_datetime(fib_end))
+                    st.session_state["plot_hist"] = hist_full.loc[st.session_state["plot_mask"]]
+                    st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(fib_start)) & (hist_full.index <= pd.to_datetime(fib_end))
+                    st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
+            else:
+                st.warning("No strong trend detected in this time frame. Showing Fibonacci levels based on selected range.")
+                st.session_state["fib_mask"] = None
+                           
             # Filtern der Daten auf den gewählten Bereich            
-            if not hist_filtered.empty:
-                h = hist_filtered['High'].max()
-                l = hist_filtered['Low'].min()
+            if not st.session_state["plot_hist"].empty:
+                h = st.session_state["plot_hist"]['High'].max()
+                l = st.session_state["plot_hist"]['Low'].min()
                 d = h - l
                 
                 dynamic_fibs = {
@@ -412,7 +423,7 @@ if df_port is not None:
                 
                 with col_left:
                     # Der Chart nutzt jetzt die gefilterten Daten und die neuen Fibs
-                    st.plotly_chart(create_chart(selected_ticker, hist_filtered, dynamic_fibs), use_container_width=True)
+                    st.plotly_chart(create_chart(selected_ticker, st.session_state["plot_hist"], dynamic_fibs), use_container_width=True)
                 
                 with col_right:
                     st.write(f"### {selected_ticker} - Key Metrics")

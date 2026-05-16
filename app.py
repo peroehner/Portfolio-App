@@ -123,7 +123,7 @@ def get_exchange_rate():
         # Fallback, falls die API hakt (ungefährer Wert)
         return 0.92
     
-# Hauptfunktion zum Abrufen der Ticker-Daten, Trends und initiale Fibonacci-Level
+# Load History data for Ticker - determine Trends and initial Fibonacci-Levels 
 def get_ticker_data(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
 
@@ -131,11 +131,8 @@ def get_ticker_data(ticker_symbol):
     if hist.empty: return None, None, None, None, None, None, None
     
     current_price = hist['Close'].iloc[-1]
-    
-    # Wir nutzen einen try-except Block, damit die App nicht crashed, wenn .info leer ist    
     est_target = None
-    upside = 0
-    pct_change = 0
+    upside = pct_change = 0
     try:
         info = stock.info
         if info:
@@ -155,19 +152,7 @@ def get_ticker_data(ticker_symbol):
         "6M": ((current_price / hist['Close'].iloc[0]) - 1) * 100
     }
     
-    # Init Fibonacci Level (12 Monate)
-    hist_12m = hist.iloc[-21*12:] # ca. 12 Handelsmonate
-    high = hist_12m['High'].max()
-    low = hist_12m['Low'].min()
-    diff = high - low
-    fibs = {
-        "0% (High)": high,
-        "38.2%": high - 0.382 * diff,
-        "50.0%": high - 0.5 * diff,
-        "61.8%": high - 0.618 * diff,
-        "100% (Low)": low
-    }
-    return current_price, est_target, upside, pct_change, trends, fibs, hist
+    return current_price, est_target, upside, pct_change, trends, hist
 
 def create_chart(ticker, hist, fibs):
     fig = go.Figure()
@@ -195,7 +180,7 @@ if df_port is not None:
         total_depot_target = 0.0    
 
         for _, row in df_port.iterrows(): # Portfolio zeilenweise durchlaufen
-            price, est_target, upside, pct_change, trends, fibs, hist = get_ticker_data(row['Symbol'])
+            price, est_target, upside, pct_change, trends, hist = get_ticker_data(row['Symbol'])
             if price:
                 # Ermittluung der Portfolio Werte und Currency Handling
                 cost_per_share = row['AvgCost']
@@ -230,7 +215,7 @@ if df_port is not None:
                     "📈 Total %": ((current_val/current_cost)-1)*100, "Ø CAGR": cagr
                 }
                 res.update(trends)
-                results_temp.append({"data": res, "fibs": fibs, "hist": hist})
+                results_temp.append({"data": res, "hist": hist})
 
         # Jetzt alles in den Session State schreiben
         st.session_state.all_results = results_temp
@@ -241,7 +226,7 @@ if df_port is not None:
 
     # Ab hier nutzen wir NUR NOCH den Session State für die Anzeige
     all_results = st.session_state.all_results
-    total_depot_value = st.session_state.total_depot_value
+    #total_depot_value = st.session_state.total_depot_value
 
     # 1. KPI DASHBOARD
     st.subheader("Depot Metrics & Status")
@@ -269,8 +254,6 @@ if df_port is not None:
         format_dict["Target $"] = "{:.0f} $"
         format_dict["Est Target"] = "{:.0f} $"
         format_dict["🌐 Price"] = "{:.1f} $"
-        # WAS: summary_df.style.format(format_dict)
-                       # Mapping der Spaltennamen
 
         # Nur diese Spalten erhalten ein "Tag"
         special_headers = {
@@ -280,10 +263,9 @@ if df_port is not None:
         }
         
         # --- FORMATIERUNG samt FEHLER-PRÄVENTION ---
-        # 1. Nur Spalten formatieren, die auch wirklich im DF existieren
+        # Nur Spalten formatieren, die auch wirklich im DF existieren
         actual_format_dict = {k: v for k, v in format_dict.items() if k in summary_df.columns}
-        
-        # 2. Sicherstellen, dass keine NaN-Werte in den Prozent-Spalten das Gradient-Rendering stören
+        # Sicherstellen, dass keine NaN-Werte in den Prozent-Spalten das Gradient-Rendering stören
         safe_percent_cols = [c for c in percent_cols if c in summary_df.columns]
         summary_df[safe_percent_cols] = summary_df[safe_percent_cols].fillna(0)
 
@@ -308,17 +290,16 @@ if df_port is not None:
     st.divider()
     st.subheader("🔍 Technical Detail-Analysis")
 
-    # 1. Ticker-Liste aus den Ergebnissen im Session State holen
+    # Ticker-Liste aus den Ergebnissen im Session State holen
     ticker_liste = st.session_state.get('ticker_liste', [])
-    #selected_ticker = None  # Standardmäßig auf None setzen
 
     # Sicherstellen, dass die Liste existiert
     if ticker_liste:
-        # 2. Session State Index initialisieren
+        # Session State Index initialisieren
         if 'ticker_index' not in st.session_state:
             st.session_state.ticker_index = 0
 
-        # 3. Funktionen (Callbacks)
+        # Funktionen (Callbacks)
         def move_next():
             st.session_state.ticker_index = (st.session_state.ticker_index + 1) % len(ticker_liste)
             st.session_state.sb_selector = ticker_liste[st.session_state.ticker_index]  # Synchronisieren mit Selectbox
@@ -332,7 +313,7 @@ if df_port is not None:
             val = st.session_state.sb_selector
             st.session_state.ticker_index = ticker_liste.index(val)
 
-        # 4. Navigations-UI
+        # Navigations-UI
         col_prev, col_select, col_next = st.columns([1, 3, 1])
         
         with col_prev:
@@ -351,7 +332,7 @@ if df_port is not None:
                 label_visibility="collapsed"
             )
 
-        # 5. Detail Anzeige für ausgewählten Wert und Zeitraum
+        # Pro Ticker Detail Anzeige für ausgewählten Wert und Zeitraum
         pick = next((item for item in st.session_state.all_results if item['data']['Symbol'] == ticker_liste[st.session_state.ticker_index]), None) 
         
         if pick:
@@ -361,9 +342,9 @@ if df_port is not None:
 
             selected_ticker = pick['data']['Symbol']
 
-            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG ---
-            f_start, f_end, price_start, price_end, strong_trend = find_latest_fibonacci_trend(hist_full)
-            trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
+            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG in HIST_FULL ---
+            f_start, f_end, price_start, price_end, f_strong_trend = find_latest_fibonacci_trend(hist_full)
+            f_trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
 
             # --- ZEITRAUM STEUERUNG ---
             st.write(f"### 📅 {selected_ticker} - Analyze in time frame")
@@ -371,37 +352,47 @@ if df_port is not None:
             # Verfügbare Monate extrahieren
             available_months = hist_full.index.to_period('M').unique()
             month_options = [d.strftime('%Y-%m') for d in available_months]
-            
-            # Defaults berechnen (Ende = Jetzt, Start = vor 12 Monaten)
-            idx_end = len(month_options) - 1
-            idx_start = max(0, idx_end - 12)
-            
+            idx_end = len(month_options) - 1 # Letzter Monat als Default-Ende
 
-            # Fibonacci trend Erkennen und ggf. Range übernehmebn
-            if strong_trend:
-                st.info(f"🤖 **{trend_type}** trend detected in range {f_start.strftime('%Y-%m-%d')} bis {f_end.strftime('%Y-%m-%d')}")
+            # sel_start sel_end im Session State und mit UI Controls verknüpfen - somit auf unterschiedlichste Weise Manipulierbar
+            if "sel_start" not in st.session_state and len(month_options) > 0:
+                st.session_state["sel_start"] = month_options[0]   # oldest month
+            if "sel_end" not in st.session_state and len(month_options) > 0:
+                st.session_state["sel_end"] = month_options[-1]   # youngest month
 
+            # User define Time Window
             cols = st.columns([0.5, 1.5, 0.5, 1.5, 1.5], vertical_alignment="center")
-
             cols[0].markdown("**Start**")
             sel_start = cols[1].selectbox("Start", options=month_options, index=0, label_visibility="collapsed")
             cols[2].markdown("**End**")
-            sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")  
-            
-            if strong_trend:
-                if cols[4].button(f"🔍 Inspect Trend", key="inspect_trend_btn", use_container_width=True):
-                    sel_start = f_start.strftime('%Y-%m')
-                    sel_end = f_end.strftime('%Y-%m')
-                    
+            sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")
+
             # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
             # Sonderbehandlung last day of sel_end aus Monat ermitteln
             last_day_sel_end = pd.to_datetime(sel_end) + pd.offsets.MonthEnd(0)
             today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
             final_end = min(last_day_sel_end, today)
-            
+
+            # Falls Fibonacci trend erkannt 
+            if f_strong_trend:
+                cols = st.columns([3, 1],   vertical_alignment="center")
+                cols[0].info(f"🤖 **{f_trend_type}** trend detected in range {f_start.strftime('%Y-%m-%d')} bis {f_end.strftime('%Y-%m-%d')}")
+                # Wenn der User auf den Button klickt, aktualisieren wir den Zeitraum auf den erkannten Trend für die weitere Analyse
+                if cols[1].button(f"🔍 Inspect Range", key="inspect_trend_btn", use_container_width=True):
+                        ins_sel_start = f_start.strftime('%Y-%m-%d')
+                        ins_sel_end = f_end.strftime('%Y-%m-%d') 
+                        # check Trend in user specified Time Frame - hist_filtered
+                        ins_sel_start, ins_sel_end, ins_price_start, ins_price_end, ins_strong_trend = find_latest_fibonacci_trend(hist_full)
+                        ins_trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
+                        if ins_strong_trend:
+                            sel_start = ins_sel_start.strftime('%Y-%m-%d')
+                            sel_end = ins_sel_end.strftime('%Y-%m-%d')
+                            final_end = ins_sel_end
+                            
+            # Plotly vorbereiten: Daten auf den gewählten Zeitraum filtern            
             mask = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
             hist_filtered = hist_full.loc[mask]
-            
+
             # Filtern der Daten auf den gewählten Bereich            
             if not hist_filtered.empty:
                 h = hist_filtered['High'].max()

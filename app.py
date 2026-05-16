@@ -2,7 +2,58 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
+import calendar
 from datetime import datetime
+import pandas as pd
+import numpy as np
+from scipy.signal import find_peaks
+
+def find_latest_fibonacci_trend(df, distance=20, prominence=0.05, strong_threshold=0.10):
+    """
+    strong_threshold: 0.10 bedeutet, der Trend muss mindestens 10% Kursbewegung 
+                      vom Start bis zum Ende aufweisen, um als "stark" zu gelten.
+    """
+    prices = df['Close'].values
+    dates = df.index
+    
+    # 1. Peaks und Troughs suchen
+    peaks, _ = find_peaks(prices, distance=distance, prominence=prices.mean() * prominence)
+    troughs, _ = find_peaks(-prices, distance=distance, prominence=prices.mean() * prominence)
+    extrema = sorted(list(peaks) + list(troughs))
+    
+    # Standardmäßig gehen wir erst mal von keinem starken Trend aus
+    is_strong_trend = False
+    
+    # 2. Fall: Ein Trend wurde über Extrempunkte gefunden
+    if len(extrema) >= 2:
+        p1_idx = extrema[-2]
+        p2_idx = extrema[-1]
+        
+        f_start, f_end = dates[p1_idx], dates[p2_idx]
+        price_start, price_end = prices[p1_idx], prices[p2_idx]
+        
+        # Berechne die absolute prozentuale Bewegung des Trends
+        trend_move_pct = abs(price_end - price_start) / price_start
+        
+        # Ein Trend ist stark, wenn er die Prozent-Hürde reißt
+        if trend_move_pct >= strong_threshold:
+            is_strong_trend = True
+            
+        return f_start, f_end, price_start, price_end, is_strong_trend
+        
+    # 3. Fallback: Keine klaren Wendepunkte -> Absolute Extrempunkte nehmen
+    else:
+        abs_max_idx = np.argmax(prices)
+        abs_min_idx = np.argmin(prices)
+        first_idx, second_idx = sorted([abs_max_idx, abs_min_idx])
+        
+        # Auch hier prüfen, ob die Gesamtrange stark genug ist
+        trend_move_pct = abs(prices[second_idx] - prices[first_idx]) / prices[first_idx]
+        if trend_move_pct >= strong_threshold:
+            is_strong_trend = True
+            
+        return dates[first_idx], dates[second_idx], prices[first_idx], prices[second_idx], is_strong_trend
+    
 
 # --- KONFIGURATION & THEME ---
 st.set_page_config(
@@ -120,6 +171,10 @@ def get_ticker_data(ticker_symbol):
 
 def create_chart(ticker, hist, fibs):
     fig = go.Figure()
+
+    # 1. Zeitzonen-Informationen aus dem Index entfernen (sehr wichtig für Plotly!)
+    hist.index = hist.index.tz_localize(None)
+
     fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Kurs", line=dict(color='#1f77b4', width=2)))
     colors = ['#d62728', '#ff7f0e', '#2ca02c', '#ff7f0e', '#d62728']
     for (label, val), color in zip(fibs.items(), colors):
@@ -223,10 +278,7 @@ if df_port is not None:
         'Preis': '🌐 Preis',
         'Target': '📈 Target'
         }
-        # .rename() ändert nur die Treffer im Dictionary
-        # styled_df = summary_df.rename(columns=special_headers)
-        # summary_df = st.dataframe(styled_df)
-
+        
         # --- FORMATIERUNG samt FEHLER-PRÄVENTION ---
         # 1. Nur Spalten formatieren, die auch wirklich im DF existieren
         actual_format_dict = {k: v for k, v in format_dict.items() if k in summary_df.columns}
@@ -304,11 +356,18 @@ if df_port is not None:
         
         if pick:
             hist_full = pick['hist'] # Die kompletten 3 Jahre
+            # Index von Zeitzone befreien (sonst Plotly Zeitzonen Konflikte)   
+            hist_full.index = hist_full.index.tz_localize(None)
+
             selected_ticker = pick['data']['Symbol']
+
+            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG ---
+            f_start, f_end, price_start, price_end, strong_trend = find_latest_fibonacci_trend(hist_full)
+            trend_type = "Bullish (Upward)" if price_start < price_end else "Bearish (Downward)"
 
             # --- ZEITRAUM STEUERUNG ---
             st.write("### 📅 Analyze in time frame")
-            
+
             # Verfügbare Monate extrahieren
             available_months = hist_full.index.to_period('M').unique()
             month_options = [d.strftime('%Y-%m') for d in available_months]
@@ -317,18 +376,33 @@ if df_port is not None:
             idx_end = len(month_options) - 1
             idx_start = max(0, idx_end - 12)
             
-            cols = st.columns([0.5, 1.5, 0.5, 1.5], vertical_alignment="center")
+
+            # Fibonacci trend Erkennen und ggf. Range übernehmebn
+            if strong_trend:
+                st.info(f"🤖 **{trend_type}** trend detected in range {f_start.strftime('%Y-%m-%d')} bis {f_end.strftime('%Y-%m-%d')}")
+
+            cols = st.columns([0.5, 1.5, 0.5, 1.5, 1.5], vertical_alignment="center")
 
             cols[0].markdown("**Start**")
             sel_start = cols[1].selectbox("Start", options=month_options, index=0, label_visibility="collapsed")
             cols[2].markdown("**End**")
             sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")  
-           
+            
+            if strong_trend:
+                if cols[4].button(f"🔍 Inspect Trend", key="inspect_trend_btn", use_container_width=True):
+                    sel_start = f_start.strftime('%Y-%m')
+                    sel_end = f_end.strftime('%Y-%m')
+                    
             # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
-            # Filtern der Daten auf den gewählten Bereich
-            mask = (hist_full.index >= sel_start) & (hist_full.index <= sel_end)
+            # Sonderbehandlung last day of sel_end aus Monat ermitteln
+            last_day_sel_end = pd.to_datetime(sel_end) + pd.offsets.MonthEnd(0)
+            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
+            final_end = min(last_day_sel_end, today)
+            
+            mask = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
             hist_filtered = hist_full.loc[mask]
             
+            # Filtern der Daten auf den gewählten Bereich            
             if not hist_filtered.empty:
                 h = hist_filtered['High'].max()
                 l = hist_filtered['Low'].min()
@@ -336,10 +410,10 @@ if df_port is not None:
                 
                 dynamic_fibs = {
                     "0% (High)": h,
-                    "38.2%": h - 0.382 * d,
-                    "50.0%": h - 0.5 * d,
-                    "61.8%": h - 0.618 * d,
-                    "100% (Low)": l
+                    "38.2% Retracement": h - 0.382 * d,
+                    "50.0% Center Line": h - 0.5 * d,
+                    "61.8% Golden Pocket": h - 0.618 * d,
+                    "100% (Low Base)": l
                 }
 
                 # --- AUSGABE IN DEN ZWEI SPALTEN ---
@@ -358,19 +432,53 @@ if df_port is not None:
                         s_obj = yf.Ticker(selected_ticker)
                         target = s_obj.info.get('targetMeanPrice')
                         if target:
+                            # st.success(f"1Y Target Estimate: {target:.2f} $ ({up_val:.1f}% Upside)")
                             up_val = ((target / curr_p) - 1) * 100
-                            st.metric("1Y Target Estimate", f"{target:.2f} $", f"From {curr_p:.1f}$ {up_val:.1f}% Upside")
+                            if up_val > 0:
+                                st.markdown( # Positiv: Grüner Pfeil nach oben + "Upside"
+                                    f"""
+                                    <div style="background-color: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
+                                        1Y Target Estimate: {target:.2f} $<br>
+                                        ↑ {up_val:.1f}% Upside from {curr_p:.2f} $ <br>
+                                    </div>
+                                    """, 
+                                    unsafe_allow_html=True
+                                )
+                            else:       
+                                st.markdown( # Negativ: Roter Pfeil nach unten + "Downside"
+                                    f"""
+                                    <div style="background-color: #fce8e6; color: #c5221f; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
+                                        1Y Target Estimate: {target:.2f} $<br>
+                                        ↓ {abs(up_val):.1f}% Downside from {curr_p:.2f} $ <br>
+                                    </div>
+                                    """, 
+                                    unsafe_allow_html=True
+                                )   
                     except:
                         st.caption("Analyst-Target not available")
 
                     # Dynamische Fibonacci Liste
-                    st.write(f"**Fibonacci (from {sel_start} to {sel_end})**")
-                    for label, val in dynamic_fibs.items():
-                        # Optische Markierung, wenn der Kurs nah an einem Level ist
-                        prox = abs(curr_p - val) / val * 100
-                        if prox < 1.5:
-                            st.warning(f"🎯 **{label}: {val:.2f}**")
-                        else:
-                            st.write(f"⚪ {label}: {val:.2f}")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.subheader(f"Fibonacci Levels")
+
+           
+            # 4. Jetzt berechnest du deine Fibonacci-Level basierend auf diesen dynamischen Werten!
+            #high_val = max(price_start, price_end)
+            #low_val = min(price_start, price_end)
+            # ... hiernach berechnest du deine Fib-Levels (0%, 38.2%, etc.) wie gewohnt
+
+
+
+                    st.caption(f"Calculated from {sel_start} to {sel_end}")
+                    with st.container():
+                        #st.write(f"**Fibonacci (from {sel_start} to {sel_end})**")
+                        for label, val in dynamic_fibs.items():
+                            # Optische Markierung, wenn der Kurs nah an einem Level ist
+                            prox = abs(curr_p - val) / val * 100
+                            if prox < 1.5:
+                                prefix= "🎯"
+                            else:
+                                prefix = "⚪"
+                            st.write(f"{prefix} **{label}: {val:.2f}**")
             else:
                 st.error("No data available for this time frame.")      

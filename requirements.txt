@@ -4,3 +4,5 @@ yfinance
 plotly
 jinja2
 matplotlib
+numpy
+scipy

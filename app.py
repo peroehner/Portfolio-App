@@ -8,6 +8,123 @@ import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
 
+import numpy as np
+import pandas as pd
+
+def find_multiple_trends(df, max_trends=4, strong_threshold=0.05):
+    """
+    Findet den größten Trend und bis zu 3 weitere signifikante Unter-Trends
+    innerhalb des übergebenen DataFrames.
+    """
+    trends = []
+    # Wir arbeiten auf einer Kopie der Kurse, um bereits gefundene Bereiche zu "schwächen"
+    working_prices = df['Close'].values.copy()
+    dates = df.index
+    
+    if len(working_prices) < 15:
+        return trends
+
+    for i in range(max_trends):
+        # Wenn fast keine Kurse mehr übrig sind, abbrechen
+        if np.all(np.isnan(working_prices)):
+            break
+            
+        # 1. Finde das aktuelle Maximum und Minimum im (verbleibenden) Datensatz
+        abs_max_idx = np.nanargmax(working_prices)
+        abs_min_idx = np.nanargmin(working_prices)
+        
+        first_idx, second_idx = sorted([abs_max_idx, abs_min_idx])
+        
+        # Sicherheitscheck für Mindestlänge eines Trends (z.B. mindestens 5 Tage)
+        if second_idx - first_idx < 5:
+            # Bereich ungültig machen, damit wir nicht in eine Endlosschleife laufen
+            working_prices[first_idx:second_idx+1] = np.nan
+            continue
+            
+        p_start, p_end = working_prices[first_idx], working_prices[second_idx]
+        
+        # Wenn durch das vorherige Nullen die Werte korrumpiert sind, skippen
+        if np.isnan(p_start) or np.isnan(p_end):
+            continue
+            
+        move_pct = abs(p_end - p_start) / p_start
+        
+        # Erfüllt der Trend das Mindestkriterium?
+        if move_pct >= strong_threshold:
+            trends.append({
+                "id": f"T{len(trends)+1}",
+                "f_start": dates[first_idx],
+                "f_end": dates[second_idx],
+                "price_start": p_start,
+                "price_end": p_end,
+                "move_pct": move_pct,
+                "type": "Bullish" if p_start < p_end else "Bearish"
+            })
+            
+            # 2. TRICK: Wir "nullen" (NaN) diesen Bereich in unseren Arbeitskursen aus,
+            # damit der Algorithmus beim nächsten Durchlauf nach ANDEREN Peaks suchen muss!
+            working_prices[first_idx:second_idx+1] = np.nan
+        else:
+            # Wenn selbst der größte verbleibende Punkt nicht mehr signifikant ist, abbrechen
+            working_prices[first_idx:second_idx+1] = np.nan
+            
+    # Wir sortieren die Trends so, dass der prozentual GRÖSSTE Trend immer auf Platz 1 steht
+    trends = sorted(trends, key=lambda x: x["move_pct"], reverse=True)
+    
+    # IDs nach Sortierung neu vergeben (T1 ist jetzt garantiert der größte)
+    for idx, t in enumerate(trends):
+        t["id"] = f"T{idx+1}"
+        
+    return trends
+
+def render_multi_trend_alert_box(trends, ticker):
+    """Zeigt den Haupttrend an und steuert den Toggle für den Chart."""
+    if not trends:
+        return
+        
+    # T1 ist dank unserer Sortierung immer der mächtigste Trend
+    main_trend = trends[0]
+    
+    trend_type = "Bullish" if main_trend["type"] == "Bullish" else "Bearish"
+        
+    col_text, col_btn = st.columns([3, 1])
+    with col_text:
+        if trend_type == "Bullish":
+            st.success(
+                f"🚀 {ticker} Main Trend **{trend_type}** "
+                f"{main_trend['f_start'].strftime('%Y-%m-%d')} - {main_trend['f_end'].strftime('%Y-%m-%d')} "
+                f"({main_trend['move_pct']*100:.1f}%). "
+                f"{len(trends)} trends found."
+            )
+        else:
+            st.info(
+                f"🤖 {ticker} Main Trend **{trend_type}** "
+                f"{main_trend['f_start'].strftime('%Y-%m-%d')} - {main_trend['f_end'].strftime('%Y-%m-%d')} "
+                f"({main_trend['move_pct']*100:.1f}%). "
+                f"{len(trends)} trends found."
+            )
+
+    with col_btn:
+        st.markdown("<div style='padding-top: 12px;'></div>", unsafe_allow_html=True)
+
+        # Der Toggle liest seinen Standardwert aus dem Session State
+        # Wenn der User klickt, schreibt Streamlit den neuen Wert direkt in die Variable
+        inspect_active = st.button(
+            "Visualize Trends", 
+            #### key="fibo_trend_inspect", # da wir den state auch ausserhalb setzen !!!!
+            help="Show all Fibonacci Trends"
+        )
+        # Toggle passt Chart-Grenzen (plot_start/end) an den Haupttrend an
+        if inspect_active:
+            st.session_state["plot_start"] = main_trend["f_start"].strftime('%Y-%m-%d')
+            st.session_state["plot_end"] = main_trend["f_end"].strftime('%Y-%m-%d')
+            st.session_state["fibo_trend_inspect"] = True   
+        else:
+            # Wenn der Toggle AUS ist, zeigen wir wieder das vom User gewählte Suchfenster
+            st.session_state["plot_start"] = st.session_state.get("sel_start")
+            st.session_state["plot_end"] = st.session_state.get("sel_end")  
+            st.session_state["fibo_trend_inspect"] = False              
+
 def find_latest_fibonacci_trend(df, distance=20, prominence=0.05, strong_threshold=0.10):
     """
     strong_threshold: 0.10 bedeutet, der Trend muss mindestens 10% Kursbewegung 
@@ -128,7 +245,7 @@ def get_ticker_data(ticker_symbol):
     stock = yf.Ticker(ticker_symbol)
 
     hist = stock.history(period="3y") # 3 Jahre laden
-    if hist.empty: return None, None, None, None, None, None, None
+    if hist.empty: return None, None, None, None, None, None
     
     current_price = hist['Close'].iloc[-1]
     est_target = None
@@ -154,18 +271,54 @@ def get_ticker_data(ticker_symbol):
     
     return current_price, est_target, upside, pct_change, trends, hist
 
-def create_chart(ticker, hist, fibs):
+def create_chart(ticker, hist, fibs, f_trends):
     fig = go.Figure()
 
     # 1. Zeitzonen-Informationen aus dem Index entfernen (sehr wichtig für Plotly!)
     hist.index = hist.index.tz_localize(None)
 
     fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Kurs", line=dict(color='#1f77b4', width=2)))
-    colors = ['#d62728', '#ff7f0e', '#2ca02c', '#ff7f0e', '#d62728']
-    for (label, val), color in zip(fibs.items(), colors):
+
+    fibo_colors = ['#d62728', '#ff7f0e', '#2ca02c', '#ff7f0e', '#d62728']
+    for (label, val), color in zip(fibs.items(), fibo_colors):
         fig.add_hline(y=val, line_dash="dash", line_color=color, annotation_text=label)
     fig.update_layout(template="plotly_white", height=400, margin=dict(l=20, r=20, t=40, b=20))
+
+    if st.session_state.get("fibo_trend_inspect", True):
+        # Farben für die verschiedaenen Trend-Stufen - Haupttrend (T1) 
+        # #colors = {1: "#00CC96", 2: "#AB63FA", 3: "#FFA15A", 4: "#19D3F3"}
+        trend_colors = {"T1": "#00CC96", "T2": "#AB63FA", "T3": "#FFA15A", "T4": "#19D3F3"}
+        
+        for t in f_trends:
+            # Bestimme die Linienstärke (Haupttrend 1 dick, Untertrends 2-4 dünner)
+            width = 4 if t["id"] == 1 else 2
+            dash = "solid" if t["id"] == 1 else "dash"
+            
+            # Füge eine diagonale Trendlinie von Start- bis Endpunkt hinzu
+            fig.add_trace(go.Scatter(
+                x=[t["f_start"], t["f_end"]], # Sauber auf f_end korrigiert
+                y=[t["price_start"], t["price_end"]], 
+                mode="lines+markers",
+                name=f"Trend {t['id']} ({t['type']})",
+                line=dict(color=trend_colors.get(t["id"], "white"), width=width, dash=dash),
+                marker=dict(size=6),
+                hoverinfo="text",
+                hovertext=f"Trend {t['id']}: {t['type']} ({t['move_pct']*100:.1f}%)"
+            ))
+            
+            # Setze die Fibo-Level im Dashboard auf die Werte des HAUPTTRENDS (Trend 1)
+            if t["id"] == 1:
+                fib_high = max(t["price_start"], t["price_end"])
+                fib_low = min(t["price_start"], t["price_end"])
+            # ... deine Fibo-Kacheln nutzen im Anschluss diese Werte (fib_high & fib_low) ...
+
     return fig
+
+def reset_trend_analyse():
+    # Setzt die Analyse zurück, sobald der User ein neues Datum wählt
+    st.session_state["fibo_trend_analyse"] = False
+    # Schaltet auch den Inspektions-Toggle automatisch aus
+    st.session_state["fibo_trend_inspect"] = False
 
 # --- HAUPTPROGRAMM ---
 st.title("🏛️ Pero Portfolio & Trend Analyzer")
@@ -226,8 +379,7 @@ if df_port is not None:
 
     # Ab hier nutzen wir NUR NOCH den Session State für die Anzeige
     all_results = st.session_state.all_results
-    #total_depot_value = st.session_state.total_depot_value
-
+    
     # 1. KPI DASHBOARD
     st.subheader("Depot Metrics & Status")
     st.caption(f"✨ **{len(df_port):,} Symbols** in Portfolio • Source: Live from Yahoo Finance •")
@@ -286,10 +438,24 @@ if df_port is not None:
         st.warning("No data to analyze in table available.") 
         summary_df = pd.DataFrame([x['data'] for x in all_results])         
     
-    # --- DETAIL ANALYSE MIT STEUERUNG ---
+    # --- DETAIL ANALYSE MIT STEUERUNG DER ZEITACHSEN ---
     st.divider()
     st.subheader("🔍 Technical Detail-Analysis")
+    
+    # Session States Detail Ansicht steuern die Zeitachsen für Select, Fib Analyse und Plot separat. Ob Fib Analyse berechnet werden soll
+    if "sel_start" not in st.session_state:
+        st.session_state["sel_start"] = None # month_options[0]
+        st.session_state["plot_start"] = None
+        st.session_state["fib_start"] = None
 
+    if "sel_end" not in st.session_state:
+        st.session_state["sel_end"] = None 
+        st.session_state["plot_end"] = None 
+        st.session_state["fib_end"] = None 
+
+    st.session_state["fibo_trend_analyse"] = True  # Toggle für die Trend-Analyse - Berechnung
+    st.session_state["fibo_trend_inspect"] = False  # Toggle für die Trend-Inspektion - Plot Fib Bereich
+    
     # Ticker-Liste aus den Ergebnissen im Session State holen
     ticker_liste = st.session_state.get('ticker_liste', [])
 
@@ -348,139 +514,136 @@ if df_port is not None:
             available_months = hist_full.index.to_period('M').unique()
             month_options = [d.strftime('%Y-%m') for d in available_months]
             idx_end = len(month_options) - 1 # Letzter Monat als Default-Ende
+            #idx_start = st.session_state["sel_start"] # selectBox
 
-            # plot_start plot_end im Session State - UI Controls Steuerung
+            #plot_start plot_end im Session State - UI Controls Steuerung
             if "plot_start" not in st.session_state and len(month_options) > 0:
                 st.session_state["plot_start"] = month_options[0]   # oldest month
             if "plot_end" not in st.session_state and len(month_options) > 0:
                 st.session_state["plot_end"] = month_options[-1]   # youngest month
-
-            # User define Time Window
+                        
+            # User define Time Window (Monthly only!)
             cols = st.columns([0.5, 1.5, 0.5, 1.5, 1.5], vertical_alignment="center")
+            
             cols[0].markdown("**Start**")
-            sel_start = cols[1].selectbox("Start", options=month_options, index=0, label_visibility="collapsed")
-            cols[2].markdown("**End**")
-            sel_end = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")
+            st.session_state["sel_start"] = cols[1].selectbox("Start", options=month_options, index=0, label_visibility="collapsed")
 
-            if cols[4].button(f"🔍 Analyse", key="analyze_trend_btn", use_container_width=True):
-                st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= pd.to_datetime(sel_end))
-                st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
+            cols[2].markdown("**End**")
+            st.session_state["sel_end"] = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")
+
+            # Sonderbehandlung last day wgg. monthly selection
+            last_day_sel_end = pd.to_datetime(st.session_state["sel_end"]) + pd.offsets.MonthEnd(0)
+            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
+            final_end = min(last_day_sel_end, today)
+
+            if cols[4].button(f"🔍 Analyse Range", help="Analyze Fibonacci levels on the selected time range."):
+                st.session_state["fibo_trend_analyse"] = True # nur ändern wenn Range geändert wird, nicht bei jedem UI Update
+                st.session_state["fib_start"] = st.session_state["sel_start"]
+                st.session_state["fib_end"] = st.session_state["sel_end"]
+
+            st.session_state["plot_start"] = st.session_state["sel_start"]
+            st.session_state["plot_end"] = final_end
 
             # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
-
-            # PLOTLY vorbereiten: Daten auf den gewählten Zeitraum filtern            
             
-            # Sonderbehandlung last day wg, Plotly 
-            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
-            last_day_sel_end = pd.to_datetime(sel_end) + pd.offsets.MonthEnd(0)
-            final_end = min(last_day_sel_end, today)
-            
-            st.session_state["plot_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
-            st.session_state["plot_hist"] = hist_full.loc[st.session_state["plot_mask"]]
+            # --- FIBO TREND-ANALYSE in FILTERED / HIST_FULL ---
+            if st.session_state.get("fibo_trend_analyse", True):
+                fib_mask = (hist_full.index >= pd.to_datetime(st.session_state["fib_start"])) & (hist_full.index <= pd.to_datetime(st.session_state["fib_end"]))
+                fib_hist = hist_full.loc[fib_mask]
+    
+                fib_trends = find_multiple_trends(fib_hist, max_trends=4, strong_threshold=0.05)
+                
+                # Damit wir nicht bei jedem UI-Update neu berechnen
+                st.session_state["fibo_trend_analyse"] = False 
 
-            # --- AUTOMATISCHE FIBO TREND-ERKENNUNG in FILTERED / HIST_FULL ---
-            if "fib_mask" not in st.session_state:
-                st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(sel_start)) & (hist_full.index <= final_end)
-                st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
+                fib_trend_type = fib_trends[0]["type"] if len(fib_trends) > 0 else None            
+                fib_strong_trend = fib_trends[0]["move_pct"] >= 0.05 if len(fib_trends) > 0 else False
+                fib_start = fib_trends[0]["f_start"] if len(fib_trends) > 0 else None
+                fib_end = fib_trends[0]["f_end"] if len(fib_trends) > 0 else None
 
-            fib_start, fib_end, fib_price_start, fib_price_end, fib_strong_trend = find_latest_fibonacci_trend(st.session_state["fib_hist"])
-            fib_trend_type = "Bullish" if fib_price_start < fib_price_end else "Bearish"
+            cols = st.columns([3, 1],   vertical_alignment="center")
 
-            if fib_strong_trend:
-                cols = st.columns([3, 1],   vertical_alignment="center")
-                if fib_trend_type == "Bullish":
-                    cols[0].info(f"🚀 **{fib_trend_type}** trend detected in range {fib_start.strftime('%Y-%m-%d')} bis {fib_end.strftime('%Y-%m-%d')}")
-                else:
-                    cols[0].info(f"🤖 **{fib_trend_type}** trend detected in range {fib_start.strftime('%Y-%m-%d')} bis {fib_end.strftime('%Y-%m-%d')}")
-                # Wenn der User auf den Button klickt, aktualisieren wir den Zeitraum auf den erkannten Trend für die weitere Analyse
-                if cols[1].button(f"🔍 Inspect Range", key="inspect_trend_btn", use_container_width=True):
-                    fib_start = fib_start.strftime('%Y-%m-%d')
-                    fib_end = fib_end.strftime('%Y-%m-%d')
-                    st.session_state["plot_mask"] = (hist_full.index >= pd.to_datetime(fib_start)) & (hist_full.index <= pd.to_datetime(fib_end))
-                    st.session_state["plot_hist"] = hist_full.loc[st.session_state["plot_mask"]]
-                    st.session_state["fib_mask"] = (hist_full.index >= pd.to_datetime(fib_start)) & (hist_full.index <= pd.to_datetime(fib_end))
-                    st.session_state["fib_hist"] = hist_full.loc[st.session_state["fib_mask"]]
-            else:
-                st.warning("No strong trend detected in this time frame. Showing Fibonacci levels based on selected range.")
-                st.session_state["fib_mask"] = None
+            render_multi_trend_alert_box(fib_trends, selected_ticker)  # Zeigt den Haupttrend + Toggle für die Trend-Inspektion
                            
-            # Filtern der Daten auf den gewählten Bereich            
-            if not st.session_state["plot_hist"].empty:
-                h = st.session_state["plot_hist"]['High'].max()
-                l = st.session_state["plot_hist"]['Low'].min()
-                d = h - l
+            # --- AUSGABE IN DEN ZWEI SPALTEN ---
+            col_left, col_right = st.columns([2, 1])
+            
+            plot_mask = (hist_full.index >= pd.to_datetime(st.session_state["plot_start"])) & (hist_full.index <= pd.to_datetime(st.session_state["plot_end"]))
+            plot_hist = hist_full.loc[plot_mask]
+
+            # XXXXX Filtern der Daten auf den gewählten Bereich            
+            h = 0 if plot_hist.empty else plot_hist['High'].max()
+            l = 0 if plot_hist.empty else plot_hist['Low'].min()
+            d = h - l
+            #
+            # if plot_hist.empty.empty
+            #    h = plot_hist['High'].max() 
+            #    l = plot_hist['Low'].min()
+            #    d = h - l
+            
+            dynamic_fibs = {
+                "0% (High)": h,
+                "38.2% Retracement": h - 0.382 * d,
+                "50.0% Center Line": h - 0.5 * d,
+                "61.8% Golden Pocket": h - 0.618 * d,
+                "100% (Low Base)": l
+            }
+        
+            with col_left:
+                # Der Chart nutzt die Plot Range
+                st.plotly_chart(
+                    create_chart(selected_ticker, plot_hist, dynamic_fibs, fib_trends), 
+                    use_container_width=True
+                )            
+
+            with col_right:
+                st.write(f"### {selected_ticker} - Key Metrics")
+                curr_p = pick['data']['🌐 Price']
                 
-                dynamic_fibs = {
-                    "0% (High)": h,
-                    "38.2% Retracement": h - 0.382 * d,
-                    "50.0% Center Line": h - 0.5 * d,
-                    "61.8% Golden Pocket": h - 0.618 * d,
-                    "100% (Low Base)": l
-                }
+                # KPI Metric (Target Price)
+                try:
+                    s_obj = yf.Ticker(selected_ticker)
+                    target = s_obj.info.get('targetMeanPrice')
+                    if target:
+                        up_val = ((target / curr_p) - 1) * 100
+                        if up_val > 0:
+                            st.markdown( # Positiv: Grüner Pfeil nach oben + "Upside"
+                                f"""
+                                <div style="background-color: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
+                                    1Y Target Estimate: {target:.2f} $<br>
+                                    ↑ {up_val:.1f}% Upside from {curr_p:.2f} $ <br>
+                                </div>
+                                """, 
+                                unsafe_allow_html=True
+                            )
+                        else:       
+                            st.markdown( # Negativ: Roter Pfeil nach unten + "Downside"
+                                f"""
+                                <div style="background-color: #fce8e6; color: #c5221f; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
+                                    1Y Target Estimate: {target:.2f} $<br>
+                                    ↓ {abs(up_val):.1f}% Downside from {curr_p:.2f} $ <br>
+                                </div>
+                                """, 
+                                unsafe_allow_html=True
+                            )   
+                except:
+                    st.caption("Analyst-Target not available")
 
-                # --- AUSGABE IN DEN ZWEI SPALTEN ---
-                col_left, col_right = st.columns([2, 1])
-                
-                with col_left:
-                    # Der Chart nutzt jetzt die gefilterten Daten und die neuen Fibs
-                    st.plotly_chart(create_chart(selected_ticker, st.session_state["plot_hist"], dynamic_fibs), use_container_width=True)
-                
-                with col_right:
-                    st.write(f"### {selected_ticker} - Key Metrics")
-                    curr_p = pick['data']['🌐 Price']
-                    
-                    # KPI Metric (Target Price)
-                    try:
-                        s_obj = yf.Ticker(selected_ticker)
-                        target = s_obj.info.get('targetMeanPrice')
-                        if target:
-                            # st.success(f"1Y Target Estimate: {target:.2f} $ ({up_val:.1f}% Upside)")
-                            up_val = ((target / curr_p) - 1) * 100
-                            if up_val > 0:
-                                st.markdown( # Positiv: Grüner Pfeil nach oben + "Upside"
-                                    f"""
-                                    <div style="background-color: #e6f4ea; color: #137333; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
-                                        1Y Target Estimate: {target:.2f} $<br>
-                                        ↑ {up_val:.1f}% Upside from {curr_p:.2f} $ <br>
-                                    </div>
-                                    """, 
-                                    unsafe_allow_html=True
-                                )
-                            else:       
-                                st.markdown( # Negativ: Roter Pfeil nach unten + "Downside"
-                                    f"""
-                                    <div style="background-color: #fce8e6; color: #c5221f; padding: 4px 8px; border-radius: 4px; display: inline-block; font-weight: bold;">
-                                        1Y Target Estimate: {target:.2f} $<br>
-                                        ↓ {abs(up_val):.1f}% Downside from {curr_p:.2f} $ <br>
-                                    </div>
-                                    """, 
-                                    unsafe_allow_html=True
-                                )   
-                    except:
-                        st.caption("Analyst-Target not available")
-
-                    # Dynamische Fibonacci Liste
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.subheader(f"Fibonacci Levels")
-
-           
-            # 4. Jetzt berechnest du deine Fibonacci-Level basierend auf diesen dynamischen Werten!
-            #high_val = max(price_start, price_end)
-            #low_val = min(price_start, price_end)
-            # ... hiernach berechnest du deine Fib-Levels (0%, 38.2%, etc.) wie gewohnt
-
-
-
-                    st.caption(f"Calculated from {sel_start} to {sel_end}")
-                    with st.container():
-                        #st.write(f"**Fibonacci (from {sel_start} to {sel_end})**")
-                        for label, val in dynamic_fibs.items():
-                            # Optische Markierung, wenn der Kurs nah an einem Level ist
-                            prox = abs(curr_p - val) / val * 100
-                            if prox < 1.5:
-                                prefix= "🎯"
-                            else:
-                                prefix = "⚪"
-                            st.write(f"{prefix} **{label}: {val:.2f}**")
-            else:
-                st.error("No data available for this time frame.")      
+                # Dynamische Fibonacci Liste
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.subheader(f"Fibonacci Levels")
+        
+                # 4. Jetzt berechnest du deine Fibonacci-Level basierend auf diesen dynamischen Werten!
+                st.caption(f"Calculated from {st.session_state['sel_start']} to {st.session_state['sel_end']}")
+                with st.container():
+                    #st.write(f"**Fibonacci (from {sel_start} to {sel_end})**")
+                    for label, val in dynamic_fibs.items():
+                        # Optische Markierung, wenn der Kurs nah an einem Level ist
+                        prox = abs(curr_p - val) / val * 100
+                        if prox < 1.5:
+                            prefix= "🎯"
+                        else:
+                            prefix = "⚪"
+                        st.write(f"{prefix} **{label}: {val:.2f}**")
+        else:
+            st.error("No data available for this time frame.")      

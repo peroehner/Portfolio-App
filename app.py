@@ -532,18 +532,14 @@ if df_port is not None:
             cols[2].markdown("**End**")
             st.session_state["sel_end"] = cols[3].selectbox("End", options=month_options, index=idx_end, label_visibility="collapsed")
 
-            # Sonderbehandlung last day wgg. monthly selection
-            last_day_sel_end = pd.to_datetime(st.session_state["sel_end"]) + pd.offsets.MonthEnd(0)
-            today = pd.Timestamp.now().normalize()  # normalize() setzt die Uhrzeit auf 00:00:00
-            final_end = min(last_day_sel_end, today)
-
             if cols[4].button(f"🔍 Analyse Range", help="Analyse Fibonacci levels on the selected time range."):
                 st.session_state["fibo_trend_analyse"] = True # nur ändern wenn Range geändert wird, nicht bei jedem UI Update
                 st.session_state["fib_start"] = st.session_state["sel_start"]
                 st.session_state["fib_end"] = st.session_state["sel_end"]
 
+            # plotten bis Monatsende 
             st.session_state["plot_start"] = st.session_state["sel_start"]
-            st.session_state["plot_end"] = final_end
+            st.session_state["plot_end"] = pd.to_datetime(st.session_state["sel_end"]) + pd.offsets.MonthEnd(0) 
 
             # --- DATEN FILTERN & FIBONACCI BERECHNEN ---
             

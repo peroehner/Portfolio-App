@@ -583,6 +583,7 @@ if df_port is not None:
                 gemini_data_dump = f"""[TECHNICAL ANALYSIS EXPORT: {selected_ticker}]
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Current Price: {curr_p:.2f} $
+1Y Mean Target estimate: {pick['data']['Est Target']:.2f} $ (Upside: {pick['data']['Upside %']:.1f}%)
 Selected UI Window: {st.session_state['ui_fib_start']} to {st.session_state['ui_fib_end']}
 Calculated Analysis Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}
 

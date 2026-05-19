@@ -312,12 +312,14 @@ if df_port is not None:
                 est_target, pct_change, div_yield = get_ticker_metadata(symbol)
                 
                 cost_per_share = row['AvgCost']
+                
                 target = row['TargetPrice']
                 if row['Currency'] == 'EUR': 
                     rate = get_exchange_rate()
                     cost_per_share /= rate
                     target /= rate
-                    
+
+                current_shares = row['Shares']
                 current_val = row['Shares'] * price
                 current_cost = row['Shares'] * cost_per_share
                 current_target = row['Shares'] * target
@@ -357,6 +359,7 @@ if df_port is not None:
                 res = {
                     "Symbol": symbol, "🌐 Price": price, "Change %": pct_change, "Div Yield": div_yield,
                     "Est Target": est_target, "Upside %": ((est_target / price) - 1) * 100 if est_target else 0, 
+                    "Shares": current_shares, "Cost/Share": cost_per_share, "PurchaseDate": purchase_date.strftime('%Y-%m-%d') if purchase_date is not None else "Unknown",
                     "📈 Target": target, "Target %": diff_target_pct * 100, "Target $": diff_target_abs,
                     "📈 Total %": ((current_val/current_cost)-1)*100, "Ø CAGR": cagr
                 }
@@ -396,6 +399,7 @@ if df_port is not None:
         format_dict["📈 Target"] = "{:.2f} $"
         format_dict["Target $"] = "{:.2f} $"
         format_dict["Est Target"] = "{:.2f} $"
+        format_dict["Cost/Share"] = "{:.2f} $"
         format_dict["🌐 Price"] = "{:.2f} $"
 
         actual_format_dict = {k: v for k, v in format_dict.items() if k in summary_df.columns}
@@ -582,10 +586,10 @@ if df_port is not None:
 
                 gemini_data_dump = f"""[TECHNICAL ANALYSIS EXPORT: {selected_ticker}]
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Calculated Analysis Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}
 Current Price: {curr_p:.2f} $
 1Y Mean Target estimate: {pick['data']['Est Target']:.2f} $ (Upside: {pick['data']['Upside %']:.1f}%)
-Selected UI Window: {st.session_state['ui_fib_start']} to {st.session_state['ui_fib_end']}
-Calculated Analysis Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}
+Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
 
 Detected Trends:
 {detected_trends_str}

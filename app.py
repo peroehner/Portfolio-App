@@ -6,6 +6,7 @@ import calendar
 from datetime import datetime
 import numpy as np
 from scipy.signal import find_peaks
+from scipy.signal import argrelextrema
 import sys
 import os
 
@@ -71,7 +72,68 @@ def get_cli_filename():
 
 # --- CORE ALGORITHMS ---
 
-def find_multiple_trends(df, max_trends=4, strong_threshold=0.05):
+def find_multiple_trends(df, max_trends=4, strong_threshold=0.05, order=10):
+    """
+    Finds significant trends by analyzing sequential local swing highs and lows.
+    'order' controls the window size (e.g., 10 days on each side to confirm a peak).
+    """
+    trends = []
+    if df is None or df.empty or 'Close' not in df.columns:
+        return trends
+        
+    prices = df['Close'].values
+    dates = pd.to_datetime(df.index).tz_localize(None)
+    
+    if len(prices) < 15:
+        return trends
+
+    # 1. Find local peaks and troughs
+    # order=10 means a point must be higher/lower than 10 points before and after it
+    local_max_idx = argrelextrema(prices, np.greater, order=order)[0]
+    local_min_idx = argrelextrema(prices, np.less, order=order)[0]
+    
+    # 2. Combine and sort them chronologically to map the market's zigzag geometry
+    all_extrema = sorted(list(local_max_idx) + list(local_min_idx))
+    
+    if len(all_extrema) < 2:
+        # Fallback to absolute endpoints if no local extrema are prominent enough
+        all_extrema = [0, len(prices) - 1]
+
+    # 3. Scan consecutive local turning points for significant legs
+    raw_legs = []
+    for i in range(len(all_extrema) - 1):
+        idx_start = all_extrema[i]
+        idx_end = all_extrema[i+1]
+        
+        # Enforce minimum distance between peaks/troughs if desired
+        if idx_end - idx_start < 3:
+            continue
+            
+        p_start = prices[idx_start]
+        p_end = prices[idx_end]
+        move_pct = abs(p_end - p_start) / p_start
+        
+        if move_pct >= strong_threshold:
+            raw_legs.append({
+                "f_start": dates[idx_start],
+                "f_end": dates[idx_end],
+                "price_start": p_start,
+                "price_end": p_end,
+                "move_pct": move_pct,
+                "type": "Bullish" if p_start < p_end else "Bearish"
+            })
+            
+    # 4. Sort all identified moves by intensity/magnitude
+    sorted_legs = sorted(raw_legs, key=lambda x: x["move_pct"], reverse=True)
+    
+    # 5. Extract top configurations up to max_trends
+    for idx, leg in enumerate(sorted_legs[:max_trends]):
+        leg["id"] = f"T{idx+1}"
+        trends.append(leg)
+        
+    return trends
+
+def XXX_find_multiple_trends(df, max_trends=4, strong_threshold=0.05):
     """Finds the dominant trend and up to 3 significant sub-trends with correct datetime mapping."""
     trends = []
     if df is None or df.empty or 'Close' not in df.columns:

@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
@@ -65,6 +66,42 @@ st.set_page_config(
     layout="wide",
 )
 inject_desktop_icons()
+
+
+def inject_table_click_modifiers():
+    """Record Alt/Shift on mousedown into URL params for the next rerun."""
+    components.html(
+        """
+        <script>
+        (function () {
+            var doc = window.parent.document;
+            function syncModifiers(e) {
+                try {
+                    var url = new URL(window.parent.location.href);
+                    url.searchParams.set("_pero_alt", e.altKey ? "1" : "0");
+                    url.searchParams.set("_pero_shift", e.shiftKey ? "1" : "0");
+                    window.parent.history.replaceState({}, "", url);
+                } catch (err) {}
+            }
+            doc.addEventListener("mousedown", syncModifiers, true);
+            doc.addEventListener("keydown", syncModifiers, true);
+            doc.addEventListener("keyup", syncModifiers, true);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def get_table_click_modifiers():
+    """Return (shift_held, alt_held) from the click that triggered this rerun."""
+    qp = st.query_params
+    shift = str(qp.get("_pero_shift", "0")).lower() in ("1", "true")
+    alt = str(qp.get("_pero_alt", "0")).lower() in ("1", "true")
+    return shift, alt
+
+
+inject_table_click_modifiers()
 
 st.markdown("""
     <style>
@@ -710,10 +747,10 @@ def portfolio_metadata_progress():
             st.session_state.pop("analyst_loaded_notice_at", None)
 
 
-def normalize_table_selection_rows(raw_rows, prev_rows):
+def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_held=False):
     """
-    Plain click -> only the clicked row. Shift+click range -> contiguous rows.
-    Uncheck one row -> keep the rest. Streamlit does not expose modifier keys.
+    Plain click -> only that row. Shift+click -> contiguous range.
+    Alt+click -> toggle one row. Uncheck -> keep the rest.
     """
     new_rows = sorted({int(r) for r in raw_rows})
     prev_rows = sorted({int(r) for r in (prev_rows or [])})
@@ -721,25 +758,33 @@ def normalize_table_selection_rows(raw_rows, prev_rows):
     if not new_rows:
         return []
 
-    if len(new_rows) == 1:
-        return new_rows
-
-    # Shift+click range (contiguous block).
-    if new_rows[-1] - new_rows[0] + 1 == len(new_rows):
-        return new_rows
-
     added = set(new_rows) - set(prev_rows)
     removed = set(prev_rows) - set(new_rows)
+    is_contiguous = new_rows[-1] - new_rows[0] + 1 == len(new_rows)
+
+    if alt_held:
+        if len(removed) == 1 and not added:
+            return new_rows
+        if len(added) == 1 and not removed:
+            return sorted(set(prev_rows) | added)
+        return new_rows
+
+    if len(new_rows) == 1:
+        return new_rows
 
     # Uncheck exactly one row — keep remaining export selection.
     if len(removed) == 1 and not added:
         return new_rows
 
-    # Plain click while other rows were checked: keep only the newly activated row(s).
+    # Shift+click range.
+    if shift_held and is_contiguous and len(new_rows) >= 2:
+        return new_rows
+    if len(added) >= 2 and is_contiguous:
+        return new_rows
+
+    # Plain click: one new row replaces selection.
     if len(added) == 1:
         return [next(iter(added))]
-    if added and not removed:
-        return [max(added)]
 
     return [new_rows[-1]]
 
@@ -789,7 +834,10 @@ def reconcile_table_selection_before_render(summary_df, table_key="portfolio_tab
         raw_rows = list(widget_state.get("selection", {}).get("rows", []))
 
     prev_rows = st.session_state.get("table_sel_rows", [])
-    rows = normalize_table_selection_rows(raw_rows, prev_rows)
+    shift_held, alt_held = get_table_click_modifiers()
+    rows = normalize_table_selection_rows(
+        raw_rows, prev_rows, shift_held=shift_held, alt_held=alt_held
+    )
     commit_selection_state(rows, summary_df)
 
     canonical = sorted({int(r) for r in raw_rows})
@@ -834,8 +882,8 @@ def render_portfolio_table_section():
         )
     else:
         st.caption(
-            "Click a row for **single** export selection · **Shift+click** for a row range · "
-            "uncheck to remove from export"
+            "Click = single row · **Shift+click** = range · **Alt+click** = toggle row · "
+            "uncheck = remove"
         )
 
 
@@ -1138,6 +1186,8 @@ uploaded_file = None
 with actions_col:
     btn_upload, btn_reset, btn_refresh = st.columns(3, gap="small")
     with btn_upload:
+        if st.session_state.pop("pending_close_upload_popover", False):
+            st.session_state.portfolio_upload_popover = False
         upload_popover = st.popover(
             "📁",
             help="Upload portfolio CSV",
@@ -1168,6 +1218,8 @@ with actions_col:
                 "uploaded_portfolio_df",
                 "uploaded_portfolio_name",
                 "portfolio_upload_popover",
+                "pending_close_upload_popover",
+                "upload_dismiss_key",
                 "metadata_enriched",
                 "metadata_bg_active",
                 "metadata_queue",
@@ -1193,7 +1245,6 @@ with actions_col:
         )
 
 df_port, current_portfolio_name = load_portfolio(uploaded_file)
-close_upload_popover = uploaded_file is not None
 
 if df_port is not None:
     if 'current_loaded_name' not in st.session_state or st.session_state.current_loaded_name != current_portfolio_name:
@@ -1232,9 +1283,14 @@ if df_port is not None:
         st.session_state.portfolio_symbols = unique_symbols
         start_metadata_background_load(unique_symbols)
 
-    if close_upload_popover:
-        st.session_state.portfolio_upload_popover = False
-        st.rerun()
+    if uploaded_file is not None:
+        dismiss_key = (
+            f"{uploaded_file.name}:{getattr(uploaded_file, 'size', 0)}"
+        )
+        if st.session_state.get("upload_dismiss_key") != dismiss_key:
+            st.session_state.upload_dismiss_key = dismiss_key
+            st.session_state.pending_close_upload_popover = True
+            st.rerun()
 
     all_results = st.session_state.all_results
 

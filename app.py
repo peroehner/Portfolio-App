@@ -355,11 +355,12 @@ if df_port is not None:
                     "1M": ((price / hist['Close'].iloc[-21]) - 1) * 100 if len(hist) >= 21 else 0,
                     "6M": ((price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) > 0 else 0
                 }
-                
+
                 res = {
                     "Symbol": symbol, "🌐 Price": price, "Change %": pct_change, "Div Yield": div_yield,
                     "Est Target": est_target, "Upside %": ((est_target / price) - 1) * 100 if est_target else 0, 
-                    "Shares": current_shares, "Cost/Share": cost_per_share, "PurchaseDate": purchase_date.strftime('%Y-%m-%d') if purchase_date is not None else "Unknown",
+                    "Shares": current_shares, "Cost/Share": cost_per_share, 
+                    "PurchaseDate": purchase_date.strftime('%Y-%m-%d') if purchase_date is not None and not pd.isna(purchase_date) else "Unknown",
                     "📈 Target": target, "Target %": diff_target_pct * 100, "Target $": diff_target_abs,
                     "📈 Total %": ((current_val/current_cost)-1)*100, "Ø CAGR": cagr
                 }

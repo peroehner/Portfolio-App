@@ -1,0 +1,24 @@
+{
+  "name": "Pero Portfolio & Trend Analyzer",
+  "short_name": "Pero Portfolio",
+  "description": "Portfolio overview, trends, and technical analysis",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f77b4",
+  "icons": [
+    {
+      "src": "/static/myPeroLogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/myPeroLogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

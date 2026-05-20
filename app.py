@@ -12,22 +12,59 @@ import html
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_PATH = os.path.join(APP_DIR, "static", "myPeroLogo.png")
+if not os.path.exists(LOGO_PATH):
+    LOGO_PATH = os.path.join(APP_DIR, "myPeroLogo.png")
+PAGE_ICON = (
+    os.path.join("static", "myPeroLogo.png")
+    if os.path.exists(os.path.join(APP_DIR, "static", "myPeroLogo.png"))
+    else "myPeroLogo.png"
+)
+
+
+def inject_desktop_icons():
+    """Favicon, Apple touch icon, and web manifest at real /static/ URLs."""
+    st.markdown(
+        """
+        <script>
+        (function () {
+            var origin = window.location.origin;
+            var icon = origin + "/static/myPeroLogo.png";
+            function addLink(rel, href, sizes) {
+                var sel = 'link[rel="' + rel + '"]';
+                if (document.querySelector(sel)) return;
+                var el = document.createElement("link");
+                el.rel = rel;
+                el.href = href;
+                if (sizes) el.sizes = sizes;
+                document.head.appendChild(el);
+            }
+            addLink("icon", icon);
+            addLink("shortcut icon", icon);
+            addLink("apple-touch-icon", icon, "180x180");
+            addLink("manifest", origin + "/static/manifest.webmanifest");
+            var theme = document.querySelector('meta[name="theme-color"]');
+            if (!theme) {
+                theme = document.createElement("meta");
+                theme.name = "theme-color";
+                theme.content = "#1f77b4";
+                document.head.appendChild(theme);
+            }
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # --- KONFIGURATION & THEME ---
 st.set_page_config(
     page_title="Pero Portfolio & Trend Analyzer",
-    page_icon="myPeroLogo.png",
-    layout="wide"
+    page_icon=PAGE_ICON,
+    layout="wide",
 )
-
-st.markdown(
-    """
-    <head>
-        <link rel="apple-touch-icon" sizes="180x180" href="myPeroLogo.png">
-        <link rel="apple-touch-startup-image" href="myPeroLogo.png">
-    </head>
-    """,
-    unsafe_allow_html=True
-)
+inject_desktop_icons()
 
 st.markdown("""
     <style>
@@ -158,8 +195,6 @@ st.markdown("""
 
 
 # --- PARSE COMMAND LINE ARGUMENTS ---
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-LOGO_PATH = os.path.join(APP_DIR, "myPeroLogo.png")
 BULL_TREND_PATH = os.path.join(APP_DIR, "bull-trend.png")
 BEAR_TREND_PATH = os.path.join(APP_DIR, "bear-trend.png")
 PORTFOLIO_FILE_CANDIDATES = ("myPortfolio.csv", "Sample-Portfolio.csv")

@@ -2,68 +2,227 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
-import calendar
 from datetime import datetime
 import numpy as np
 from scipy.signal import argrelextrema
 import sys
 import os
+import time
+import html
+import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_PATH = os.path.join(APP_DIR, "static", "myPeroLogo.png")
+if not os.path.exists(LOGO_PATH):
+    LOGO_PATH = os.path.join(APP_DIR, "myPeroLogo.png")
+PAGE_ICON = (
+    os.path.join("static", "myPeroLogo.png")
+    if os.path.exists(os.path.join(APP_DIR, "static", "myPeroLogo.png"))
+    else "myPeroLogo.png"
+)
+
+
+def inject_desktop_icons():
+    """Favicon, Apple touch icon, and web manifest at real /static/ URLs."""
+    st.markdown(
+        """
+        <script>
+        (function () {
+            var origin = window.location.origin;
+            var icon = origin + "/static/myPeroLogo.png";
+            function addLink(rel, href, sizes) {
+                var sel = 'link[rel="' + rel + '"]';
+                if (document.querySelector(sel)) return;
+                var el = document.createElement("link");
+                el.rel = rel;
+                el.href = href;
+                if (sizes) el.sizes = sizes;
+                document.head.appendChild(el);
+            }
+            addLink("icon", icon);
+            addLink("shortcut icon", icon);
+            addLink("apple-touch-icon", icon, "180x180");
+            addLink("manifest", origin + "/static/manifest.webmanifest");
+            var theme = document.querySelector('meta[name="theme-color"]');
+            if (!theme) {
+                theme = document.createElement("meta");
+                theme.name = "theme-color";
+                theme.content = "#1f77b4";
+                document.head.appendChild(theme);
+            }
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # --- KONFIGURATION & THEME ---
 st.set_page_config(
-    page_title="Portfolio Architektur Pro",
-    page_icon="myPeroLogo.png",
-    layout="wide"
+    page_title="Pero Portfolio & Trend Analyzer",
+    page_icon=PAGE_ICON,
+    layout="wide",
 )
+inject_desktop_icons()
 
-st.markdown(
-    """
-    <head>
-        <link rel="apple-touch-icon" sizes="180x180" href="myPeroLogo.png">
-        <link rel="apple-touch-startup-image" href="myPeroLogo.png">
-    </head>
-    """,
-    unsafe_allow_html=True
-)
-
-# Zentrales CSS für Lesbarkeit, Box-Design und kompakten Uploader
 st.markdown("""
     <style>
-    .custom-info-box {
-        background-color: #e7f3fe; 
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #1f77b4;
-        margin-bottom: 10px;
-        min-height: 100px;
+    /* Compact page chrome — more table visible above the fold */
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.75rem !important;
     }
-    .custom-info-box h3 {
+    header[data-testid="stHeader"] {
+        background: transparent;
+    }
+    .app-header-row [data-testid="column"] {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    .app-header-row [data-testid="stImage"] img {
+        max-height: 60px;
+        width: auto;
+        object-fit: contain;
+    }
+    .app-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #111;
         margin: 0;
-        font-size: 14px;
-        color: #1f77b4;
+        padding: 0;
+        line-height: 1.2;
     }
-    .custom-info-box p {
+    .app-title .app-muted {
+        font-weight: 500;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .section-divider {
+        border: none;
+        border-top: 1px solid #e8ecf0;
+        margin: 0.35rem 0 0.45rem 0;
+    }
+    .tech-header {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #111;
+        margin: 0.15rem 0 0.3rem 0;
+        line-height: 1.25;
+    }
+    [data-testid="stTabs"] {
+        margin-bottom: 0.15rem;
+    }
+    [data-testid="stPlotlyChart"] {
+        margin-bottom: 0.15rem;
+    }
+    hr[data-testid="stDivider"] {
+        margin: 0.35rem 0 !important;
+    }
+    div[data-testid="stVerticalBlock"] > div {
+        gap: 0.35rem;
+    }
+    [data-testid="stProgress"] {
+        margin-bottom: 0.2rem;
+    }
+    [data-testid="stProgress"] label {
+        font-size: 0.8rem;
+    }
+    .kpi-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        align-items: center;
+        font-size: 0.8rem;
+        color: #444;
         margin: 0;
-        font-size: 24px;
-        font-weight: bold;
-        color: #000000;
+        padding: 0.35rem 0.55rem;
+        background: #f6f8fa;
+        border-radius: 6px;
+        border: 1px solid #e8ecf0;
+        min-height: 2.1rem;
     }
-    [data-testid="stDataFrame"] td {
-        color: black !important;
+    .kpi-strip .kpi-item b { color: #1f77b4; font-weight: 600; }
+    .kpi-strip .kpi-val { font-weight: 700; color: #111; font-size: 0.9rem; }
+    .kpi-strip .kpi-file {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
-    /* Macht den File Uploader kompakt für die Inline-Anzeige im Header */
-    [data-testid="stFileUploader"] {
-        padding-bottom: 0px;
+    .trend-line {
+        font-size: 0.78rem;
+        margin: 0.05rem 0 0.25rem 0;
+        padding: 0;
+        line-height: 1.3;
     }
-    [data-testid="stFileUploader"] section {
-        padding: 0px 10px;
-        min-height: 38px;
+    .trend-bull { color: #137333; }
+    .trend-bear { color: #c5221f; }
+    .trend-line .trend-icon {
+        height: 1.55rem;
+        width: auto;
+        vertical-align: middle;
+        margin-right: 0.35rem;
+        border-radius: 4px;
+        object-fit: cover;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+    }
+    .trend-icon-emoji {
+        font-size: 1.15rem;
+        vertical-align: middle;
+        margin-right: 0.3rem;
+    }
+    .metric-chip {
+        background-color: #e6f4ea;
+        color: #137333;
+        padding: 6px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    .metric-chip.down {
+        background-color: #fce8e6;
+        color: #c5221f;
+    }
+    .metric-chip.div {
+        background-color: #e8f0fe;
+        color: #1a73e8;
+    }
+    [data-testid="stDataFrame"] td { color: black !important; }
+    div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stMetric"]) {
+        padding-top: 0;
     }
     </style>
     """, unsafe_allow_html=True)
 
 
 # --- PARSE COMMAND LINE ARGUMENTS ---
+BULL_TREND_PATH = os.path.join(APP_DIR, "bull-trend.png")
+BEAR_TREND_PATH = os.path.join(APP_DIR, "bear-trend.png")
+PORTFOLIO_FILE_CANDIDATES = ("myPortfolio.csv", "Sample-Portfolio.csv")
+CHART_HEIGHT = 340
+
+
+@st.cache_data
+def get_trend_icon_html(trend_type):
+    """Inline trend icons from bull-trend.png / bear-trend.png."""
+    paths = {
+        "Bullish": (BULL_TREND_PATH, "Bull", "Bullish"),
+        "Bearish": (BEAR_TREND_PATH, "Bear", "Bearish"),
+    }
+    if trend_type in paths:
+        path, alt, title = paths[trend_type]
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            return (
+                f'<img class="trend-icon" src="data:image/png;base64,{b64}" '
+                f'alt="{alt}" title="{title}"/>'
+            )
+    return '<span class="trend-icon-emoji">?</span>'
+
+
 def get_cli_filename():
     """Extrahiert den Dateinamen, falls via '-f <filename>' im Terminal übergeben."""
     try:
@@ -72,14 +231,101 @@ def get_cli_filename():
             idx = args.index("-f")
             if idx + 1 < len(args):
                 potential_file = args[idx + 1]
-                if os.path.exists(potential_file):
+                if os.path.isabs(potential_file) and os.path.exists(potential_file):
                     return potential_file
-    except:
+                for base in (os.getcwd(), APP_DIR):
+                    candidate = os.path.join(base, potential_file)
+                    if os.path.exists(candidate):
+                        return candidate
+    except Exception:
         pass
     return None
 
 
+def _parse_portfolio_df(df):
+    df = df.copy()
+    df["PurchaseDate"] = pd.to_datetime(df["PurchaseDate"])
+    return df
+
+
+def load_portfolio_from_path(path):
+    df = _parse_portfolio_df(pd.read_csv(path, sep=";"))
+    return df, os.path.basename(path)
+
+
+def get_mock_portfolio_df():
+    """Demo portfolio when no CSV is available (AAPL, Google, CRWD, NBIS, MELI)."""
+    df = pd.DataFrame([
+        {"Symbol": "AAPL", "Name": "Apple Inc.", "Shares": 100, "PurchaseDate": "2024-01-15", "AvgCost": 175.0, "TargetPrice": 220.0, "Currency": "USD"},
+        {"Symbol": "GOOGL", "Name": "Alphabet (Google)", "Shares": 50, "PurchaseDate": "2024-03-01", "AvgCost": 140.0, "TargetPrice": 200.0, "Currency": "USD"},
+        {"Symbol": "CRWD", "Name": "CrowdStrike", "Shares": 75, "PurchaseDate": "2024-06-01", "AvgCost": 280.0, "TargetPrice": 400.0, "Currency": "USD"},
+        {"Symbol": "NBIS", "Name": "Nebius Group", "Shares": 200, "PurchaseDate": "2024-09-01", "AvgCost": 25.0, "TargetPrice": 45.0, "Currency": "USD"},
+        {"Symbol": "MELI", "Name": "MercadoLibre", "Shares": 30, "PurchaseDate": "2023-11-01", "AvgCost": 1500.0, "TargetPrice": 2200.0, "Currency": "USD"},
+    ])
+    return _parse_portfolio_df(df)
+
+
 # --- KERN-ALGORITHMEN ---
+
+def normalize_dividend_yield(div_yield):
+    """Convert fractional yield to percent (0.02 → 2.0)."""
+    if div_yield is None or div_yield == 0:
+        return 0.0
+    div_yield = float(div_yield)
+    if div_yield < 1:
+        return div_yield * 100
+    return div_yield
+
+
+def extract_dividend_yield(info):
+    """Parse dividend yield from Yahoo info (field format varies)."""
+    if not info:
+        return 0.0
+    trailing = info.get("trailingAnnualDividendYield")
+    if trailing is not None and trailing > 0:
+        return normalize_dividend_yield(trailing)
+    div = info.get("dividendYield")
+    if div is None or div == 0:
+        return 0.0
+    div = float(div)
+    # Fraction (e.g. 0.0035) vs percent points (e.g. 0.36 = 0.36%)
+    if div < 0.2:
+        return div * 100
+    return div
+
+
+METADATA_COLS = {"Div Yield", "Est Target", "Upside %"}
+
+
+def period_return(close_series, price, trading_days):
+    """Percent change over `trading_days` trading days."""
+    if len(close_series) < trading_days + 1:
+        return 0.0
+    past = close_series.iloc[-(trading_days + 1)]
+    if past == 0 or pd.isna(past):
+        return 0.0
+    return ((price / past) - 1) * 100
+
+
+def compute_trend_returns(price, close_series):
+    """Rolling returns for 5D, 1M (~21d), 6M (~126d), 12M (~252d)."""
+    return {
+        "5D": period_return(close_series, price, 5),
+        "1M": period_return(close_series, price, 21),
+        "6M": period_return(close_series, price, 126),
+        "12M": period_return(close_series, price, 252),
+    }
+
+
+def daily_change_pct(close_series):
+    """Approximate daily change from last two closes (no Yahoo info call)."""
+    if len(close_series) < 2:
+        return 0.0
+    prev = close_series.iloc[-2]
+    if prev == 0 or pd.isna(prev):
+        return 0.0
+    return ((close_series.iloc[-1] / prev) - 1) * 100
+
 
 def find_multiple_trends(df, max_trends=4, strong_threshold=0.05, order=10):
     """Findet signifikante Trends über lokale Swing Highs und Lows."""
@@ -88,7 +334,9 @@ def find_multiple_trends(df, max_trends=4, strong_threshold=0.05, order=10):
         return trends
         
     prices = df['Close'].values
-    dates = pd.to_datetime(df.index).tz_localize(None)
+    dates = pd.to_datetime(df.index)
+    if getattr(dates, "tz", None) is not None:
+        dates = dates.tz_localize(None)
     
     total_len = len(prices)
     if total_len < 15:
@@ -149,60 +397,682 @@ def find_multiple_trends(df, max_trends=4, strong_threshold=0.05, order=10):
 
 # --- DATENBESCHAFFUNG ---
 
+TABLE_HISTORY_PERIOD = "2y"   # 12M trend needs ~253 trading days; 1y is often too short
+DETAIL_HISTORY_PERIOD = "2y"  # Fibonacci / technical chart (lazy per ticker)
+METADATA_BATCH_SIZE = 2       # symbols per background tick (Yahoo rate limits)
+METADATA_POLL_SECONDS = 1.5   # fragment refresh interval while loading
+ANALYST_LOADED_NOTICE_SEC = 3
+
+# Table detail tabs — edit column lists per view as needed
+TABLE_VIEW_COLUMNS = {
+    "Standard": [
+        "Symbol", "🌐 Price", "Change %", "Div Yield", "Est Target", "Upside %",
+    ],
+    "Trends": [
+        "Symbol", "🌐 Price", "Change %", "5D", "1M", "6M", "12M",
+    ],
+    "ROI": [
+        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
+        "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "Est Target",
+    ],
+}
+
+TABLE_PERCENT_COLS = [
+    "📈 Total %", "Change %", "Upside %", "Ø CAGR", "Target %", "5D", "1M", "6M", "12M",
+]
+TABLE_CURRENCY_COLS = ["📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price"]
+TABLE_PNL_COLS = ["Total $"]
+TABLE_GRADIENT_EXCLUDE = {"Div Yield"}
+
+# Signed cell colors: zero = white, positive = green, negative = red
+_COLOR_POSITIVE = (19, 115, 51)
+_COLOR_NEGATIVE = (197, 34, 31)
+
+
+def _signed_cell_color(intensity, rgb_end):
+    intensity = max(0.0, min(1.0, intensity))
+    r = int(255 - (255 - rgb_end[0]) * intensity)
+    g = int(255 - (255 - rgb_end[1]) * intensity)
+    b = int(255 - (255 - rgb_end[2]) * intensity)
+    return f"background-color: rgb({r},{g},{b}); color: black"
+
+
+def style_signed_column(series):
+    """Green for gains, red for losses; intensity scales with magnitude."""
+    numeric = pd.to_numeric(series, errors="coerce")
+    positives = numeric[numeric > 0]
+    negatives = numeric[numeric < 0]
+    max_pos = positives.max() if not positives.empty else 0
+    max_neg = negatives.abs().max() if not negatives.empty else 0
+
+    styles = []
+    for val in numeric:
+        if pd.isna(val) or val == 0:
+            styles.append("background-color: white; color: black")
+        elif val > 0:
+            intensity = val / max_pos if max_pos else 0
+            styles.append(_signed_cell_color(intensity, _COLOR_POSITIVE))
+        else:
+            intensity = abs(val) / max_neg if max_neg else 0
+            styles.append(_signed_cell_color(intensity, _COLOR_NEGATIVE))
+    return styles
+
+
+def _read_uploaded_portfolio(uploaded_file):
+    """Read uploaded CSV; Streamlit files must be rewound on each rerun."""
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+    df = pd.read_csv(uploaded_file, sep=";")
+    if df.empty or len(df.columns) == 0:
+        raise ValueError("CSV is empty or has no columns")
+    return _parse_portfolio_df(df)
+
+
 def load_portfolio(uploaded_file):
-    """Lädt das Portfolio aus dem Uploader, CLI-Argumenten oder lokalen Dateien."""
+    """Lädt Portfolio: Upload > -f CLI > myPortfolio.csv > Sample-Portfolio.csv > Demo-Mock."""
     try:
         if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file, sep=';')
-            df['PurchaseDate'] = pd.to_datetime(df['PurchaseDate'])
+            cache_key = (
+                f"{st.session_state.get('uploader_key', 0)}:"
+                f"{uploaded_file.name}:"
+                f"{getattr(uploaded_file, 'size', 0)}"
+            )
+            if st.session_state.get("uploaded_portfolio_cache_key") == cache_key:
+                return (
+                    st.session_state.uploaded_portfolio_df.copy(),
+                    uploaded_file.name,
+                )
+            df = _read_uploaded_portfolio(uploaded_file)
+            st.session_state.uploaded_portfolio_cache_key = cache_key
+            st.session_state.uploaded_portfolio_df = df
+            st.session_state.uploaded_portfolio_name = uploaded_file.name
             return df, uploaded_file.name
+
+        cached_df = st.session_state.get("uploaded_portfolio_df")
+        if cached_df is not None:
+            return (
+                cached_df.copy(),
+                st.session_state.get("uploaded_portfolio_name", "Uploaded portfolio"),
+            )
 
         cli_file = get_cli_filename()
         if cli_file is not None:
-            df = pd.read_csv(cli_file, sep=';')
-            df['PurchaseDate'] = pd.to_datetime(df['PurchaseDate'])
-            return df, cli_file
+            return load_portfolio_from_path(cli_file)
 
-        try:
-            df = pd.read_csv("Sample-Portfolio.csv", sep=';')
-            filename = "Sample-Portfolio.csv"
-        except Exception as e:
-            st.error(f"Datei 'Sample-Portfolio.csv' nicht gefunden: {e}")
-            return None, "Kein Portfolio geladen"
-                
-        df['PurchaseDate'] = pd.to_datetime(df['PurchaseDate'])
-        return df, filename
+        for filename in PORTFOLIO_FILE_CANDIDATES:
+            path = os.path.join(APP_DIR, filename)
+            if os.path.exists(path):
+                return load_portfolio_from_path(path)
+
+        return get_mock_portfolio_df(), "Demo Portfolio (mock)"
     except Exception as e:
-        st.error(f"Fehler beim Laden des Portfolios: {e}")
-        return None, "Fehler beim Laden"
+        st.error(f"Error loading portfolio: {e}")
+        return None, "Load error"
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_exchange_rate():
     try:
         fx = yf.Ticker("EURUSD=X")
         return 1 / fx.history(period="1d")['Close'].iloc[-1]
-    except:
+    except Exception:
         return 0.92
 
 
-@st.cache_data(ttl=3600)
-def get_ticker_metadata(ticker_symbol):
-    """Holt Metadaten (KPIs) separat und stark gecached, um API-Anfragen klein zu halten."""
-    stock = yf.Ticker(ticker_symbol)
-    est_target = None
-    pct_change = 0
-    div_yield = 0.0
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_bulk_close(symbols_tuple, period=TABLE_HISTORY_PERIOD):
+    """Bulk close prices for all symbols (cached)."""
+    symbols = list(symbols_tuple)
+    if not symbols:
+        return pd.DataFrame()
     try:
-        info = stock.info
-        if info:
-            pct_change = info.get('regularMarketChangePercent', 0)
-            est_target = info.get('targetMeanPrice')
-            div_yield = info.get('dividendYield', 0)
-            if div_yield is None:
-                div_yield = 0.0
-    except:
-        pass
-    return est_target, pct_change, div_yield
+        bulk_data = yf.download(symbols, period=period, progress=False, group_by="column")
+        if bulk_data is None or bulk_data.empty:
+            return pd.DataFrame()
+        if len(symbols) == 1:
+            close = bulk_data["Close"]
+            return pd.DataFrame({symbols[0]: close}).dropna()
+        return bulk_data["Close"].dropna(how="all")
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_ticker_ohlc_history(ticker_symbol, period=DETAIL_HISTORY_PERIOD):
+    """Full OHLC for Fibonacci/detail view — loaded only when needed."""
+    try:
+        hist = yf.Ticker(ticker_symbol).history(period=period)
+        if hist is None or hist.empty:
+            return pd.DataFrame()
+        hist = hist.copy()
+        if getattr(hist.index, "tz", None) is not None:
+            hist.index = hist.index.tz_localize(None)
+        return hist
+    except Exception:
+        return pd.DataFrame()
+
+
+def _fetch_ticker_metadata_raw(ticker_symbol):
+    """Single Yahoo metadata request with fallbacks."""
+    est_target = 0.0
+    pct_change = 0.0
+    div_yield = 0.0
+    ticker = yf.Ticker(ticker_symbol)
+    info = {}
+    try:
+        info = ticker.info or {}
+    except Exception:
+        info = {}
+
+    if info:
+        pct_change = info.get("regularMarketChangePercent") or 0.0
+        est_target = (
+            info.get("targetMeanPrice")
+            or info.get("targetMedianPrice")
+            or 0.0
+        )
+        div_yield = extract_dividend_yield(info)
+
+    if not est_target:
+        try:
+            targets = ticker.get_analyst_price_targets()
+            if targets is not None and not targets.empty and "current" in targets.columns:
+                if "mean" in targets.index:
+                    est_target = float(targets.loc["mean", "current"])
+                elif len(targets) > 0:
+                    est_target = float(targets["current"].iloc[0])
+        except Exception:
+            pass
+
+    return float(est_target or 0), float(pct_change or 0), float(div_yield or 0)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_symbol_metadata(ticker_symbol):
+    """Cached metadata for one symbol (used on row/detail focus)."""
+    for attempt in range(2):
+        result = _fetch_ticker_metadata_raw(ticker_symbol)
+        if result[0] or result[2]:
+            return result
+        time.sleep(0.4 * (attempt + 1))
+    return result
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_portfolio_metadata_parallel(symbols_tuple):
+    """Fetch analyst metadata in parallel (optional bulk load)."""
+    symbols = list(symbols_tuple)
+    if not symbols:
+        return {}
+    workers = min(4, max(1, len(symbols)))
+    results = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(get_symbol_metadata, s): s for s in symbols}
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                results[symbol] = future.result()
+            except Exception:
+                results[symbol] = (0.0, 0.0, 0.0)
+            time.sleep(0.15)
+    return results
+
+
+def apply_metadata_to_item(item, est_target, pct_change, div_yield):
+    """Write analyst fields into one portfolio row."""
+    price = item["data"]["🌐 Price"]
+    item["data"]["Change %"] = pct_change
+    item["data"]["Div Yield"] = div_yield
+    item["data"]["Est Target"] = est_target
+    item["data"]["Upside %"] = ((est_target / price) - 1) * 100 if est_target and price else 0.0
+
+
+def enrich_symbol_metadata(all_results, symbol):
+    """Load and merge analyst data for a single symbol into session results."""
+    meta = get_symbol_metadata(symbol)
+    for item in all_results:
+        if item["data"]["Symbol"] == symbol:
+            apply_metadata_to_item(item, *meta)
+    if "enriched_symbols" not in st.session_state:
+        st.session_state.enriched_symbols = set()
+    st.session_state.enriched_symbols.add(symbol)
+
+
+def start_metadata_background_load(symbols):
+    """Queue analyst fields to load progressively after prices are shown."""
+    symbol_list = list(dict.fromkeys(symbols))
+    st.session_state.metadata_queue = symbol_list
+    st.session_state.metadata_total = len(symbol_list)
+    st.session_state.metadata_bg_active = bool(symbol_list)
+    st.session_state.metadata_enriched = False
+    st.session_state.enriched_symbols = set()
+    st.session_state.pop("analyst_loaded_notice_at", None)
+
+
+def prioritize_metadata_symbol(symbol):
+    """Move symbol to front of background queue (e.g. on row click)."""
+    if symbol in st.session_state.get("enriched_symbols", set()):
+        return
+    queue = list(st.session_state.get("metadata_queue", []))
+    if symbol in queue:
+        queue.remove(symbol)
+        st.session_state.metadata_queue = [symbol] + queue
+    elif st.session_state.get("metadata_bg_active"):
+        st.session_state.metadata_queue = [symbol] + queue
+    else:
+        enrich_symbol_metadata(st.session_state.all_results, symbol)
+
+
+def process_metadata_background_batch():
+    """Fetch next batch of analyst data; returns True if more work remains."""
+    if not st.session_state.get("metadata_bg_active"):
+        return False
+    queue = list(st.session_state.get("metadata_queue", []))
+    if not queue:
+        st.session_state.metadata_bg_active = False
+        st.session_state.metadata_enriched = True
+        st.session_state.analyst_loaded_notice_at = time.time()
+        return False
+    batch = queue[:METADATA_BATCH_SIZE]
+    st.session_state.metadata_queue = queue[METADATA_BATCH_SIZE:]
+    for symbol in batch:
+        enrich_symbol_metadata(st.session_state.all_results, symbol)
+    return bool(st.session_state.metadata_queue)
+
+
+@st.fragment(run_every=METADATA_POLL_SECONDS)
+def portfolio_metadata_progress():
+    """Background analyst loader only — table stays in main app for row selection."""
+    if "all_results" not in st.session_state or not st.session_state.all_results:
+        return
+
+    process_metadata_background_batch()
+
+    total = st.session_state.get("metadata_total", 0)
+    remaining = len(st.session_state.get("metadata_queue", []))
+    done = total - remaining
+
+    if st.session_state.get("metadata_bg_active") and total > 0:
+        next_sym = (
+            st.session_state.metadata_queue[0]
+            if st.session_state.metadata_queue
+            else "…"
+        )
+        st.progress(
+            min(1.0, done / total),
+            text=f"Loading analyst data: {done}/{total} · Next: {next_sym}",
+        )
+    elif st.session_state.get("metadata_enriched"):
+        notice_at = st.session_state.get("analyst_loaded_notice_at")
+        if notice_at and (time.time() - notice_at) < ANALYST_LOADED_NOTICE_SEC:
+            st.progress(1.0, text="✓ Analyst data loaded.")
+        elif notice_at:
+            st.session_state.pop("analyst_loaded_notice_at", None)
+
+
+def normalize_table_selection_rows(raw_rows, prev_rows):
+    """
+    Plain click -> only the clicked row. Shift+click range -> contiguous rows.
+    Uncheck one row -> keep the rest. Streamlit does not expose modifier keys.
+    """
+    new_rows = sorted({int(r) for r in raw_rows})
+    prev_rows = sorted({int(r) for r in (prev_rows or [])})
+
+    if not new_rows:
+        return []
+
+    if len(new_rows) == 1:
+        return new_rows
+
+    # Shift+click range (contiguous block).
+    if new_rows[-1] - new_rows[0] + 1 == len(new_rows):
+        return new_rows
+
+    added = set(new_rows) - set(prev_rows)
+    removed = set(prev_rows) - set(new_rows)
+
+    # Uncheck exactly one row — keep remaining export selection.
+    if len(removed) == 1 and not added:
+        return new_rows
+
+    # Plain click while other rows were checked: keep only the newly activated row(s).
+    if len(added) == 1:
+        return [next(iter(added))]
+    if added and not removed:
+        return [max(added)]
+
+    return [new_rows[-1]]
+
+
+def rows_to_symbols(row_indices, summary_df):
+    symbols = []
+    last_row_idx = None
+    for row_idx in sorted(row_indices):
+        if row_idx < 0 or row_idx >= len(summary_df):
+            continue
+        sym = str(summary_df.iloc[row_idx]["Symbol"])
+        symbols.append(sym)
+        last_row_idx = row_idx
+    return symbols, last_row_idx
+
+
+def commit_selection_state(rows, summary_df):
+    """Persist normalized row indices to export list and detail focus."""
+    st.session_state.table_sel_rows = rows
+    symbols, last_row_idx = rows_to_symbols(rows, summary_df)
+    st.session_state.selected_symbols = symbols
+    if not symbols:
+        return
+    focus = symbols[-1]
+    if st.session_state.get("selected_symbol") != focus:
+        st.session_state.selected_symbol = focus
+        st.session_state.ticker_index = last_row_idx
+        st.session_state["fibo_needs_refresh"] = True
+        prioritize_metadata_symbol(focus)
+
+
+def reconcile_table_selection_before_render(summary_df, table_key="portfolio_table"):
+    """
+    Normalize selection before st.dataframe mounts.
+    Streamlit updates session state from the UI before the script runs; we align
+    it here so rapid clicks do not race with post-render corrections.
+    """
+    if st.session_state.pop("clear_table_selection", False):
+        st.session_state.table_sel_rows = []
+        st.session_state.selected_symbols = []
+        st.session_state[table_key] = {"selection": {"rows": []}}
+        return False
+
+    raw_rows = []
+    widget_state = st.session_state.get(table_key)
+    if isinstance(widget_state, dict):
+        raw_rows = list(widget_state.get("selection", {}).get("rows", []))
+
+    prev_rows = st.session_state.get("table_sel_rows", [])
+    rows = normalize_table_selection_rows(raw_rows, prev_rows)
+    commit_selection_state(rows, summary_df)
+
+    canonical = sorted({int(r) for r in raw_rows})
+    if rows != canonical:
+        st.session_state[table_key] = {"selection": {"rows": rows}}
+        st.rerun()
+        return True
+    return False
+
+
+def render_portfolio_table_section():
+    """Tabbed column views with one multi-select table on the active tab only."""
+    summary_df = pd.DataFrame([x["data"] for x in st.session_state.all_results])
+    if reconcile_table_selection_before_render(summary_df):
+        return
+    view_options = list(TABLE_VIEW_COLUMNS.keys())
+    default_view = st.session_state.get("portfolio_table_view", view_options[0])
+    if default_view not in view_options:
+        default_view = view_options[0]
+
+    tab_widgets = st.tabs(
+        view_options,
+        key="portfolio_table_view",
+        default=default_view,
+        on_change="rerun",
+    )
+
+    for view_name, tab in zip(view_options, tab_widgets):
+        if tab.open:
+            with tab:
+                render_portfolio_table(summary_df, view_name, table_key="portfolio_table")
+
+    selected_symbols = st.session_state.get("selected_symbols") or []
+    focus = st.session_state.get("selected_symbol")
+    if selected_symbols:
+        sym_label = ", ".join(selected_symbols) if len(selected_symbols) <= 4 else (
+            f"{', '.join(selected_symbols[:3])}, +{len(selected_symbols) - 3} more"
+        )
+        st.caption(
+            f"**{len(selected_symbols)}** selected for export ({sym_label})"
+            + (f" · Detail: **{focus}**" if focus else "")
+        )
+    else:
+        st.caption(
+            "Click a row for **single** export selection · **Shift+click** for a row range · "
+            "uncheck to remove from export"
+        )
+
+
+def build_hist_by_symbol(bulk_close, symbols):
+    """Pre-index close history per symbol — no network in the row loop."""
+    hist_by_symbol = {}
+    for symbol in symbols:
+        if bulk_close.empty or symbol not in bulk_close.columns:
+            continue
+        close = bulk_close[symbol].dropna()
+        if not close.empty:
+            hist_by_symbol[symbol] = pd.DataFrame({"Close": close})
+    return hist_by_symbol
+
+
+def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map=None):
+    """Build depot rows from pre-fetched prices only (no per-row API calls)."""
+    results_temp = []
+    total_depot_value = 0.0
+    total_depot_cost = 0.0
+    total_depot_target = 0.0
+
+    for _, row in df_port.iterrows():
+        symbol = row["Symbol"]
+        hist = hist_by_symbol.get(symbol, pd.DataFrame())
+        if hist.empty:
+            continue
+
+        price = hist["Close"].iloc[-1]
+        if metadata_map and symbol in metadata_map:
+            est_target, pct_change, div_yield = metadata_map[symbol]
+            upside_pct = ((est_target / price) - 1) * 100 if est_target else 0.0
+        else:
+            est_target, div_yield, upside_pct = None, None, None
+            pct_change = daily_change_pct(hist["Close"])
+
+        cost_per_share = row["AvgCost"]
+        target = row["TargetPrice"]
+        if row["Currency"] == "EUR" and eur_rate:
+            cost_per_share /= eur_rate
+            target /= eur_rate
+
+        current_shares = row["Shares"]
+        current_val = row["Shares"] * price
+        current_cost = row["Shares"] * cost_per_share
+        current_target = row["Shares"] * target
+
+        total_depot_value += current_val
+        total_depot_cost += current_cost
+        total_depot_target += current_target
+
+        diff_target_abs = abs(target - price)
+        diff_target_pct = abs(target - price) / price if price != 0 else 0
+
+        purchase_date = row["PurchaseDate"]
+        if pd.isna(purchase_date) or isinstance(purchase_date, str):
+            try:
+                purchase_date = pd.to_datetime(purchase_date)
+            except Exception:
+                purchase_date = None
+
+        if purchase_date is None or pd.isna(purchase_date):
+            days_held = 365
+        else:
+            p_date_naive = purchase_date.to_pydatetime().replace(tzinfo=None)
+            days_held = max((datetime.now() - p_date_naive).days, 1)
+
+        years_held = max(days_held / 365.25, 0.01)
+        cagr = ((current_val / current_cost) ** (1 / years_held) - 1) * 100
+        trends = compute_trend_returns(price, hist["Close"])
+
+        res = {
+            "Symbol": symbol,
+            "🌐 Price": price,
+            "Change %": pct_change,
+            "Div Yield": div_yield,
+            "Est Target": est_target,
+            "Upside %": upside_pct,
+            "Shares": current_shares,
+            "Cost/Share": cost_per_share,
+            "PurchaseDate": purchase_date.strftime("%Y-%m-%d")
+            if purchase_date is not None and not pd.isna(purchase_date)
+            else "Unknown",
+            "📈 Target": target,
+            "Target %": diff_target_pct * 100,
+            "Target $": diff_target_abs,
+            "📈 Total %": ((current_val / current_cost) - 1) * 100,
+            "Total $": current_val - current_cost,
+            "Ø CAGR": cagr,
+        }
+        res.update(trends)
+        results_temp.append({"data": res, "hist": hist})
+
+    return results_temp, total_depot_value, total_depot_cost, total_depot_target
+
+
+def enrich_results_with_metadata(all_results, metadata_map):
+    """Merge optional analyst fields into an already-built portfolio."""
+    for item in all_results:
+        symbol = item["data"]["Symbol"]
+        if symbol not in metadata_map:
+            continue
+        apply_metadata_to_item(item, *metadata_map[symbol])
+    st.session_state.enriched_symbols = set(metadata_map.keys())
+
+
+def get_table_format_dict(columns):
+    """Column format strings for the styled portfolio table."""
+    format_dict = {col: "{:.2f}%" for col in TABLE_PERCENT_COLS if col in columns}
+    if "Div Yield" in columns:
+        format_dict["Div Yield"] = "{:.1f}%"
+    for col in TABLE_CURRENCY_COLS:
+        if col in columns:
+            format_dict[col] = "{:.2f} $"
+    return format_dict
+
+
+def render_portfolio_table(summary_df, view_name, table_key="portfolio_table"):
+    """Render one table detail view; returns the dataframe selection event."""
+    cols = [c for c in TABLE_VIEW_COLUMNS[view_name] if c in summary_df.columns]
+    if "Symbol" in summary_df.columns and "Symbol" not in cols:
+        cols = ["Symbol"] + cols
+
+    display_df = summary_df[cols].copy()
+    format_dict = get_table_format_dict(cols)
+    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
+
+    fill_cols = [
+        c for c in TABLE_PERCENT_COLS + ["Div Yield"]
+        if c in display_df.columns and c not in METADATA_COLS
+    ]
+    if fill_cols:
+        display_df[fill_cols] = display_df[fill_cols].fillna(0)
+
+    gradient_cols = [
+        c for c in fill_cols
+        if c in actual_format_dict and c not in TABLE_GRADIENT_EXCLUDE
+    ] + [c for c in TABLE_PNL_COLS if c in display_df.columns]
+    styled = display_df.style.format(actual_format_dict, na_rep="-").set_properties(
+        **{"background-color": "white", "color": "black"}
+    )
+    if gradient_cols:
+        styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
+
+    return st.dataframe(
+        styled,
+        use_container_width=True,
+        on_select="rerun",
+        selection_mode="multi-row",
+        key=table_key,
+    )
+
+
+def normalize_ohlc_hist(hist):
+    if hist is None or hist.empty:
+        return pd.DataFrame()
+    hist = hist.copy()
+    if getattr(hist.index, "tz", None) is not None:
+        hist.index = hist.index.tz_localize(None)
+    if "High" not in hist.columns:
+        hist["High"] = hist["Close"]
+        hist["Low"] = hist["Close"]
+    return hist
+
+
+def compute_fibonacci_levels(calc_hist):
+    h = 0 if calc_hist.empty else calc_hist["High"].max()
+    l = 0 if calc_hist.empty else calc_hist["Low"].min()
+    d = h - l
+    return {
+        "0% (High)": h,
+        "38.2% Retracement": h - 0.382 * d,
+        "50.0% Center Line": h - 0.5 * d,
+        "61.8% Golden Pocket": h - 0.618 * d,
+        "100% (Low Base)": l,
+    }
+
+
+def slice_hist_to_window(hist, window_start, window_end):
+    mask = (hist.index >= pd.to_datetime(window_start)) & (
+        hist.index <= (pd.to_datetime(window_end) + pd.offsets.MonthEnd(0))
+    )
+    return hist.loc[mask]
+
+
+def build_symbol_export_block(symbol, window_start, window_end, all_results):
+    pick = next((item for item in all_results if item["data"]["Symbol"] == symbol), None)
+    if not pick:
+        return ""
+    hist_full = normalize_ohlc_hist(get_ticker_ohlc_history(symbol, DETAIL_HISTORY_PERIOD))
+    if hist_full.empty:
+        hist_full = normalize_ohlc_hist(pick["hist"])
+    if hist_full.empty:
+        return f"[TECHNICAL ANALYSIS EXPORT: {symbol}]\nNo price history available.\n"
+
+    calc_hist = slice_hist_to_window(hist_full, window_start, window_end)
+    fib_trends = find_multiple_trends(calc_hist, max_trends=4, strong_threshold=0.05)
+    dynamic_fibs = compute_fibonacci_levels(calc_hist)
+    curr_p = pick["data"]["🌐 Price"]
+
+    if fib_trends:
+        detected_trends_str = "".join(
+            f"- {t['id']} ({t['type']}): {t['f_start'].strftime('%Y-%m-%d')} to "
+            f"{t['f_end'].strftime('%Y-%m-%d')} (Move: {t['move_pct'] * 100:.1f}%)\n"
+            for t in fib_trends
+        )
+    else:
+        detected_trends_str = "- No significant trends detected.\n"
+
+    fib_levels_str = "".join(f"- {label}: {val:.2f} $\n" for label, val in dynamic_fibs.items())
+
+    return f"""[TECHNICAL ANALYSIS EXPORT: {symbol}]
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Analysis window: {window_start} to {window_end}
+Current Price: {curr_p:.2f} $
+1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
+Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
+
+Detected Trends:
+{detected_trends_str}
+Fibonacci Levels:
+{fib_levels_str}"""
+
+
+def build_multi_export_datasets(symbols, window_start, window_end, all_results):
+    blocks = [
+        build_symbol_export_block(symbol, window_start, window_end, all_results)
+        for symbol in symbols
+    ]
+    blocks = [b for b in blocks if b]
+    header = (
+        f"[PORTFOLIO EXPORT — {len(blocks)} symbol(s)]\n"
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Time window: {window_start} → {window_end}\n"
+        f"Symbols: {', '.join(symbols)}\n"
+    )
+    return header + ("\n" + ("=" * 72) + "\n\n").join(blocks)
 
 
 # --- CHARTING ---
@@ -212,24 +1082,29 @@ def create_chart(ticker, hist, fibs, f_trends, inspect_active):
     if hist is None or hist.empty:
         return fig
 
-    hist.index = hist.index.tz_localize(None)
-    fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Kurs", line=dict(color='#1f77b4', width=2)))
+    if getattr(hist.index, "tz", None) is not None:
+        hist.index = hist.index.tz_localize(None)
+    fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Price", line=dict(color='#1f77b4', width=2)))
 
     fibo_colors = ['#d62728', '#ff7f0e', '#2ca02c', '#ff7f0e', '#d62728']
     for (label, val), color in zip(fibs.items(), fibo_colors):
         fig.add_hline(y=val, line_dash="dash", line_color=color, annotation_text=label)
-        
-    fig.update_layout(template="plotly_white", height=420, margin=dict(l=20, r=20, t=20, b=20))
+
+    fig.update_layout(
+        template="plotly_white",
+        height=CHART_HEIGHT,
+        margin=dict(l=12, r=12, t=8, b=8),
+    )
 
     if inspect_active and f_trends:
         trend_colors = {"T1": "#00CC96", "T2": "#AB63FA", "T3": "#FFA15A", "T4": "#19D3F3"}
         for t in f_trends:
             width = 4 if t["id"] == "T1" else 2
             dash = "solid" if t["id"] == "T1" else "dash"
-            
+
             fig.add_trace(go.Scatter(
-                x=[t["f_start"], t["f_end"]], 
-                y=[t["price_start"], t["price_end"]], 
+                x=[t["f_start"], t["f_end"]],
+                y=[t["price_start"], t["price_end"]],
                 mode="lines+markers",
                 name=f"Trend {t['id']} ({t['type']})",
                 line=dict(color=trend_colors.get(t["id"], "#7f7f7f"), width=width, dash=dash),
@@ -242,37 +1117,83 @@ def create_chart(ticker, hist, fibs, f_trends, inspect_active):
 
 # --- HAUPTPROGRAMM INTERFACE ---
 
-st.title("🏛️ Pero Portfolio & Trend Analyzer")
-
+header_logo_col, header_title_col = st.columns([0.4, 5.6], vertical_alignment="center")
+with header_logo_col:
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, width=60)
+    else:
+        st.caption("Pero")
+with header_title_col:
+    st.markdown(
+        '<p class="app-title"><b>Pero Portfolio</b> '
+        '<span class="app-muted">· Trend Analyzer</span></p>',
+        unsafe_allow_html=True,
+    )
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
 
-hdr_col1, hdr_col2, hdr_col3 = st.columns([2.0, 2.5, 0.5], vertical_alignment="center")
+kpi_col, actions_col = st.columns([6.2, 1.3], vertical_alignment="center")
 
-temp_file = st.session_state.get(f"portfolio_upload_{st.session_state.uploader_key}")
-df_port, current_portfolio_name = load_portfolio(temp_file)
-
-with hdr_col1:
-    st.subheader(f"💼 Workspace: {current_portfolio_name}")
-
-with hdr_col2:
-    user_file = st.file_uploader(
-        "Upload custom portfolio CSV (';')", 
-        type=["csv"], 
-        label_visibility="collapsed",
-        key=f"portfolio_upload_{st.session_state.uploader_key}"
-    )
-
-with hdr_col3:
-    is_cli_active = get_cli_filename() is not None
-    if temp_file is not None or is_cli_active:
-        if st.button("❌", help="Reset auf Standard-Portfolio"):
+uploaded_file = None
+with actions_col:
+    btn_upload, btn_reset, btn_refresh = st.columns(3, gap="small")
+    with btn_upload:
+        upload_popover = st.popover(
+            "📁",
+            help="Upload portfolio CSV",
+            use_container_width=True,
+            key="portfolio_upload_popover",
+            on_change="rerun",
+        )
+        with upload_popover:
+            if upload_popover.open:
+                uploaded_file = st.file_uploader(
+                    "Portfolio CSV (semicolon-separated)",
+                    type=["csv"],
+                    key=f"portfolio_upload_{st.session_state.uploader_key}",
+                )
+    with btn_reset:
+        show_reset = (
+            uploaded_file is not None
+            or st.session_state.get("uploaded_portfolio_df") is not None
+            or get_cli_filename() is not None
+        )
+        if show_reset and st.button(
+            "❌", help="Clear upload & use default portfolio", use_container_width=True
+        ):
             st.session_state.uploader_key += 1
-            if 'all_results' in st.session_state:
-                del st.session_state['all_results']
+            for key in (
+                "all_results",
+                "uploaded_portfolio_cache_key",
+                "uploaded_portfolio_df",
+                "uploaded_portfolio_name",
+                "portfolio_upload_popover",
+                "metadata_enriched",
+                "metadata_bg_active",
+                "metadata_queue",
+                "metadata_total",
+                "enriched_symbols",
+                "current_loaded_name",
+                "analyst_loaded_notice_at",
+                "selected_symbol",
+                "selected_symbols",
+                "table_sel_rows",
+                "ticker_index",
+                "portfolio_table_view",
+                "clear_table_selection",
+            ):
+                if key in st.session_state:
+                    del st.session_state[key]
+            if "portfolio_table" in st.session_state:
+                del st.session_state["portfolio_table"]
             st.rerun()
+    with btn_refresh:
+        refresh_clicked = st.button(
+            "🔄", help="Refresh prices & analyst data", use_container_width=True
+        )
 
-st.markdown("---")
+df_port, current_portfolio_name = load_portfolio(uploaded_file)
+close_upload_popover = uploaded_file is not None
 
 if df_port is not None:
     if 'current_loaded_name' not in st.session_state or st.session_state.current_loaded_name != current_portfolio_name:
@@ -282,251 +1203,201 @@ if df_port is not None:
         total_depot_cost = 0.0
         total_depot_target = 0.0    
 
-        ticker_liste_all = df_port['Symbol'].unique().tolist()
-        
-        with st.spinner("Hole alle Live-Marktdaten parallel von Yahoo Finance..."):
-            try:
-                bulk_data = yf.download(ticker_liste_all, period="3y", progress=False)
-                bulk_close = bulk_data['Close'] if len(ticker_liste_all) > 1 else pd.DataFrame(bulk_data['Close'], columns=ticker_liste_all)
-            except:
-                bulk_close = pd.DataFrame()
+        unique_symbols = tuple(sorted(df_port["Symbol"].unique().tolist()))
+        needs_eur = (df_port["Currency"] == "EUR").any()
+        eur_rate = get_exchange_rate() if needs_eur else None
 
-        for _, row in df_port.iterrows():
-            symbol = row['Symbol']
-            
-            hist = pd.DataFrame()
-            if not bulk_close.empty and symbol in bulk_close.columns:
-                hist = pd.DataFrame(bulk_close[symbol].dropna())
-                hist.columns = ['Close']
-                hist['High'] = hist['Close']
-                hist['Low'] = hist['Close']
+        with st.spinner("Loading prices..."):
+            bulk_close = fetch_bulk_close(unique_symbols, TABLE_HISTORY_PERIOD)
+            hist_by_symbol = build_hist_by_symbol(bulk_close, unique_symbols)
 
-            if hist.empty:
-                try:
-                    hist = yf.Ticker(symbol).history(period="3y")
-                except:
-                    hist = pd.DataFrame()
-
-            if not hist.empty:
-                price = hist['Close'].iloc[-1]
-                est_target, pct_change, div_yield = get_ticker_metadata(symbol)
-                
-                cost_per_share = row['AvgCost']
-                
-                target = row['TargetPrice']
-                if row['Currency'] == 'EUR': 
-                    rate = get_exchange_rate()
-                    cost_per_share /= rate
-                    target /= rate
-
-                current_shares = row['Shares']
-                current_val = row['Shares'] * price
-                current_cost = row['Shares'] * cost_per_share
-                current_target = row['Shares'] * target
-
-                total_depot_value  += current_val
-                total_depot_cost   += current_cost
-                total_depot_target += current_target
-
-                diff_target_abs = abs(target - price)
-                diff_target_pct = abs(target - price) / price if price != 0 else 0
-                
-                # --- ROBUSTE DATUMS- & CAGR-BERECHNUNG ---
-                purchase_date = row['PurchaseDate']
-                if pd.isna(purchase_date) or isinstance(purchase_date, str):
-                    try:
-                        purchase_date = pd.to_datetime(purchase_date)
-                    except:
-                        purchase_date = None
-
-                if purchase_date is None or pd.isna(purchase_date):
-                    days_held = 365
-                else:
-                    p_date_naive = purchase_date.to_pydatetime().replace(tzinfo=None)
-                    days_held = max((datetime.now() - p_date_naive).days, 1)
-                
-                years_held = max(days_held / 365.25, 0.01)
-                cagr = ((current_val / current_cost) ** (1 / years_held) - 1) * 100
-                
-                trends = {
-                    "1D": pct_change if pct_change is not None else 0,
-                    "3D": ((price / hist['Close'].iloc[-3]) - 1) * 100 if len(hist) >= 3 else 0,
-                    "5D": ((price / hist['Close'].iloc[-5]) - 1) * 100 if len(hist) >= 5 else 0,
-                    "1M": ((price / hist['Close'].iloc[-21]) - 1) * 100 if len(hist) >= 21 else 0,
-                    "6M": ((price / hist['Close'].iloc[0]) - 1) * 100 if len(hist) > 0 else 0
-                }
-
-                res = {
-                    "Symbol": symbol, "🌐 Price": price, "Change %": pct_change, "Div Yield": div_yield,
-                    "Est Target": est_target, "Upside %": ((est_target / price) - 1) * 100 if est_target else 0, 
-                    "Shares": current_shares, "Cost/Share": cost_per_share, 
-                    "PurchaseDate": purchase_date.strftime('%Y-%m-%d') if purchase_date is not None and not pd.isna(purchase_date) else "Unknown",
-                    "📈 Target": target, "Target %": diff_target_pct * 100, "Target $": diff_target_abs,
-                    "📈 Total %": ((current_val/current_cost)-1)*100, "Ø CAGR": cagr
-                }
-                res.update(trends)
-                results_temp.append({"data": res, "hist": hist})
+        results_temp, total_depot_value, total_depot_cost, total_depot_target = build_portfolio_results(
+            df_port, hist_by_symbol, eur_rate, metadata_map=None
+        )
 
         st.session_state.all_results = results_temp
         st.session_state.total_depot_value = total_depot_value
         st.session_state.total_depot_cost = total_depot_cost
         st.session_state.total_depot_target = total_depot_target
-        st.session_state.ticker_liste = [x['data']['Symbol'] for x in results_temp]
+        st.session_state.ticker_liste = [x["data"]["Symbol"] for x in results_temp]
+        if results_temp:
+            first_symbol = results_temp[0]["data"]["Symbol"]
+            st.session_state.selected_symbol = first_symbol
+            st.session_state.selected_symbols = []
+            st.session_state.table_sel_rows = []
+            st.session_state.ticker_index = 0
+            st.session_state.clear_table_selection = True
+            if "portfolio_table" in st.session_state:
+                del st.session_state["portfolio_table"]
+        st.session_state.portfolio_symbols = unique_symbols
+        start_metadata_background_load(unique_symbols)
+
+    if close_upload_popover:
+        st.session_state.portfolio_upload_popover = False
+        st.rerun()
 
     all_results = st.session_state.all_results
-    
-    # --- 1. KPI DASHBOARD ---
-    st.subheader("Depot Metrics & Status")
-    st.caption(f"✨ **{len(df_port):,} Symbols** inside `{current_portfolio_name}` • Parallel Live Mass-Feed •")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(f'<div class="custom-info-box"><h3>Actual Asset Value</h3><p>{st.session_state.total_depot_value:,.2f} $</p></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="custom-info-box"><h3>Invested Cost Base</h3><p>{st.session_state.total_depot_cost:,.2f} $</p></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="custom-info-box"><h3>Aggregated Target Value</h3><p>{st.session_state.total_depot_target:,.2f} $</p></div>', unsafe_allow_html=True)        
-
-    # --- 2. PERFORMANCE TABELLE MIT KLICK-AUSWAHL ---
-    st.subheader("Performance Matrix & Trend Analytics")
-    st.caption("💡 *Klicke auf eine Zeile in der Tabelle, um die technische Detail-Analyse direkt für diesen Ticker zu öffnen.*")
- 
-    if 'all_results' in st.session_state and len(st.session_state.all_results) > 0:
-        summary_df = pd.DataFrame([x['data'] for x in st.session_state.all_results])
-        
-        percent_cols = ['📈 Total %', 'Change %', 'Upside %', 'Ø CAGR', 'Target %', '1D', '3D', '5D', '1M', '6M']
-        format_dict = {col: "{:.2f}%" for col in percent_cols}
-        format_dict["Div Yield"] = "{:.1f}%"
-        format_dict["📈 Target"] = "{:.2f} $"
-        format_dict["Target $"] = "{:.2f} $"
-        format_dict["Est Target"] = "{:.2f} $"
-        format_dict["Cost/Share"] = "{:.2f} $"
-        format_dict["🌐 Price"] = "{:.2f} $"
-
-        actual_format_dict = {k: v for k, v in format_dict.items() if k in summary_df.columns}
-        safe_percent_cols = [c for c in percent_cols + ["Div Yield"] if c in summary_df.columns]
-        summary_df[safe_percent_cols] = summary_df[safe_percent_cols].fillna(0)
-
-        event = st.dataframe(
-            summary_df.style.format(actual_format_dict, na_rep='-')
-            .set_properties(**{'background-color': 'white', 'color': 'black'})
-            .background_gradient(cmap='RdYlGn', subset=[c for c in safe_percent_cols if c != 'Div Yield']),
-            use_container_width=True,
-            on_select="rerun",
-            selection_mode="single-row"
+    safe_filename = html.escape(str(current_portfolio_name))
+    with kpi_col:
+        st.markdown(
+            f'<div class="kpi-strip">'
+            f'<span class="kpi-item kpi-file" title="{safe_filename}">'
+            f'<b>File</b> <span class="kpi-val">{safe_filename}</span></span>'
+            f'<span class="kpi-item"><b>Symbols</b> <span class="kpi-val">{len(df_port):,}</span></span>'
+            f'<span class="kpi-item"><b>Value</b> <span class="kpi-val">${st.session_state.total_depot_value:,.0f}</span></span>'
+            f'<span class="kpi-item"><b>Cost</b> <span class="kpi-val">${st.session_state.total_depot_cost:,.0f}</span></span>'
+            f'<span class="kpi-item"><b>Target</b> <span class="kpi-val">${st.session_state.total_depot_target:,.0f}</span></span>'
+            f"</div>",
+            unsafe_allow_html=True,
         )
-        
-        if event and 'rows' in event.selection and len(event.selection['rows']) > 0:
-            selected_row_idx = event.selection['rows'][0]
-            if 'ticker_index' not in st.session_state or st.session_state.ticker_index != selected_row_idx:
-                st.session_state.ticker_index = selected_row_idx
-                st.session_state["fibo_needs_refresh"] = True
 
-    # --- 3. HYBRIDE DETAILANALYSE (VISUELL SOFORT / MATHEMATISCH STARR) ---
-    st.divider()
-    
+    if refresh_clicked:
+        fetch_bulk_close.clear()
+        get_ticker_ohlc_history.clear()
+        get_exchange_rate.clear()
+        get_symbol_metadata.clear()
+        fetch_portfolio_metadata_parallel.clear()
+        for key in (
+            "all_results",
+            "current_loaded_name",
+            "metadata_enriched",
+            "metadata_bg_active",
+            "metadata_queue",
+            "metadata_total",
+            "enriched_symbols",
+            "analyst_loaded_notice_at",
+            "selected_symbol",
+            "selected_symbols",
+            "table_sel_rows",
+            "ticker_index",
+            "portfolio_table_view",
+            "clear_table_selection",
+        ):
+            if key in st.session_state:
+                del st.session_state[key]
+        if "portfolio_table" in st.session_state:
+            del st.session_state["portfolio_table"]
+        st.rerun()
+
+    if "all_results" in st.session_state and len(st.session_state.all_results) > 0:
+        portfolio_metadata_progress()
+        render_portfolio_table_section()
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
     ticker_liste = st.session_state.get('ticker_liste', [])
 
     if ticker_liste:
-        if 'ticker_index' not in st.session_state or st.session_state.ticker_index >= len(ticker_liste):
+        if st.session_state.get("selected_symbol") not in ticker_liste:
+            st.session_state.selected_symbol = ticker_liste[0]
             st.session_state.ticker_index = 0
             st.session_state["fibo_needs_refresh"] = True
+        elif "ticker_index" not in st.session_state or st.session_state.ticker_index >= len(ticker_liste):
+            st.session_state.ticker_index = ticker_liste.index(st.session_state.selected_symbol)
+            st.session_state["fibo_needs_refresh"] = True
 
-        selected_ticker = ticker_liste[st.session_state.ticker_index]
+        selected_ticker = st.session_state.selected_symbol
         pick = next((item for item in st.session_state.all_results if item['data']['Symbol'] == selected_ticker), None) 
         
         if pick:
-            if 'High' not in pick['hist'].columns or pick['hist']['High'].equals(pick['hist']['Close']):
-                try:
-                    pick['hist'] = yf.Ticker(pick['data']['Symbol']).history(period="3y")
-                except:
-                    pass
+            if selected_ticker not in st.session_state.get("enriched_symbols", set()):
+                prioritize_metadata_symbol(selected_ticker)
+                if selected_ticker not in st.session_state.get("enriched_symbols", set()):
+                    with st.spinner(f"Loading analyst data for {selected_ticker}..."):
+                        enrich_symbol_metadata(st.session_state.all_results, selected_ticker)
+                pick = next(
+                    (item for item in st.session_state.all_results if item["data"]["Symbol"] == selected_ticker),
+                    pick,
+                )
 
-            hist_full = pick['hist'].copy()
-            hist_full.index = hist_full.index.tz_localize(None)
+            hist_full = get_ticker_ohlc_history(selected_ticker, DETAIL_HISTORY_PERIOD)
+            if hist_full.empty:
+                hist_full = pick["hist"].copy()
+                if getattr(hist_full.index, "tz", None) is not None:
+                    hist_full.index = hist_full.index.tz_localize(None)
+                if "High" not in hist_full.columns:
+                    hist_full["High"] = hist_full["Close"]
+                    hist_full["Low"] = hist_full["Close"]
 
             available_months = hist_full.index.to_period('M').unique()
             month_options = [d.strftime('%Y-%m') for d in available_months]
 
-            # Mathematischer Analyse-Zustand im State verankern
-            if "calc_fib_start" not in st.session_state or st.session_state["calc_fib_start"] not in month_options:
-                st.session_state["calc_fib_start"] = month_options[0]
-            if "calc_fib_end" not in st.session_state or st.session_state["calc_fib_end"] not in month_options:
-                st.session_state["calc_fib_end"] = month_options[-1]
+            def ensure_month_key(key, default):
+                if key not in st.session_state or st.session_state[key] not in month_options:
+                    st.session_state[key] = default
 
-            # Visueller Live-Zustand für den interaktiven Sofort-Zuschnitt des Charts
-            if "ui_fib_start" not in st.session_state or st.session_state["ui_fib_start"] not in month_options:
-                st.session_state["ui_fib_start"] = st.session_state["calc_fib_start"]
-            if "ui_fib_end" not in st.session_state or st.session_state["ui_fib_end"] not in month_options:
-                st.session_state["ui_fib_end"] = st.session_state["calc_fib_end"]
-                
-            # Bei Tickerwechsel alles hart auf Maximum zurücksetzen und neu berechnen
+            ensure_month_key("calc_fib_start", month_options[0])
+            ensure_month_key("calc_fib_end", month_options[-1])
+            ensure_month_key("sel_start_ui", month_options[0])
+            ensure_month_key("sel_end_ui", month_options[-1])
+
             if st.session_state.get("fibo_needs_refresh", True):
                 st.session_state["calc_fib_start"] = month_options[0]
                 st.session_state["calc_fib_end"] = month_options[-1]
-                st.session_state["ui_fib_start"] = month_options[0]
-                st.session_state["ui_fib_end"] = month_options[-1]
+                st.session_state["sel_start_ui"] = month_options[0]
+                st.session_state["sel_end_ui"] = month_options[-1]
                 st.session_state["fibo_needs_refresh"] = False
 
-            top_layout_left, top_layout_right = st.columns([3, 1], vertical_alignment="bottom")
-            
-            with top_layout_left:
-                st.markdown(f"#### 🛠️ Time Window Selection for {selected_ticker}")
-                
-                idx_ui_start = month_options.index(st.session_state["ui_fib_start"])
-                idx_ui_end = month_options.index(st.session_state["ui_fib_end"])
-                
-                btn_start_clicked = False
-                btn_end_clicked = False
+            st.markdown(
+                f'<p class="tech-header">{selected_ticker} — Technical Analysis</p>',
+                unsafe_allow_html=True,
+            )
 
-                t_col_start_sel, t_col_start_btn, t_col_end_btn, t_col_end_sel, t_col_action = st.columns(
-                    [2.0, 0.5, 0.5, 2.0, 1.5], 
-                    vertical_alignment="bottom"
-                )
-                
-                # 1. BUTTON-LOGIK (Prüfung vor den Selectboxen)
-                with t_col_start_btn:
-                    if st.button(">>", help="Startfenster um 3 Monate verengen", use_container_width=True):
-                        new_idx = min(idx_ui_start + 3, idx_ui_end)
-                        st.session_state["ui_fib_start"] = month_options[new_idx]
-                        btn_start_clicked = True
+            idx_start = month_options.index(st.session_state["sel_start_ui"])
+            idx_end = month_options.index(st.session_state["sel_end_ui"])
 
-                with t_col_end_btn:
-                    if st.button("<<", help="Endfenster um 3 Monate verengen", use_container_width=True):
-                        new_idx = max(idx_ui_end - 3, idx_ui_start)
-                        st.session_state["ui_fib_end"] = month_options[new_idx]
-                        btn_end_clicked = True
+            t_col_start_sel, t_col_start_btn, t_col_end_btn, t_col_end_sel, t_col_action, t_col_toggle = st.columns(
+                [1.6, 0.35, 0.35, 1.6, 1.1, 1.0],
+                vertical_alignment="bottom",
+            )
 
-                if btn_start_clicked or btn_end_clicked:
+            with t_col_start_btn:
+                if st.button("⏩", help="Move start forward 3 months", use_container_width=True):
+                    st.session_state["sel_start_ui"] = month_options[min(idx_start + 3, idx_end)]
+                    st.rerun()
+            with t_col_end_btn:
+                if st.button("⏪", help="Move end back 3 months", use_container_width=True):
+                    st.session_state["sel_end_ui"] = month_options[max(idx_end - 3, idx_start)]
                     st.rerun()
 
-                # 2. SELECTBOXEN
-                with t_col_start_sel:
-                    sel_start = st.selectbox(
-                        "Start Window", 
-                        options=month_options, 
-                        index=month_options.index(st.session_state["ui_fib_start"]), 
-                        key="sel_start_ui"
-                    )
-                    st.session_state["ui_fib_start"] = sel_start
-                
-                with t_col_end_sel:
-                    sel_end = st.selectbox(
-                        "End Window", 
-                        options=month_options, 
-                        index=month_options.index(st.session_state["ui_fib_end"]), 
-                        key="sel_end_ui"
-                    )
-                    st.session_state["ui_fib_end"] = sel_end
-                
-                # 3. ANALYSE BUTTON
-                with t_col_action:
-                    if st.button("🔍 Analyse Range", use_container_width=True):
-                        st.session_state["calc_fib_start"] = st.session_state["ui_fib_start"]
-                        st.session_state["calc_fib_end"] = st.session_state["ui_fib_end"]
+            with t_col_start_sel:
+                st.selectbox(
+                    "From",
+                    options=month_options,
+                    key="sel_start_ui",
+                    label_visibility="collapsed",
+                )
+            with t_col_end_sel:
+                st.selectbox(
+                    "To",
+                    options=month_options,
+                    key="sel_end_ui",
+                    label_visibility="collapsed",
+                )
 
-            # --- DATEN-SPLIT FÜR HYBRIDES VERHALTEN ---
-            # A. Mathematische Analyse basiert starr auf den berechneten "calc_fib"-Werten
+            st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
+            st.session_state["ui_fib_end"] = st.session_state["sel_end_ui"]
+
+            window_changed = (
+                st.session_state["sel_start_ui"] != st.session_state["calc_fib_start"]
+                or st.session_state["sel_end_ui"] != st.session_state["calc_fib_end"]
+            )
+
+            with t_col_action:
+                if st.button(
+                    "📐 Re-Analyse",
+                    disabled=not window_changed,
+                    help="Recalculate Fibonacci levels and trends for the selected time window",
+                    use_container_width=True,
+                ):
+                    st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
+                    st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
+                    st.rerun()
+            with t_col_toggle:
+                inspect_active = st.toggle("Trend overlay", value=True, key="fibo_trend_inspect")
+
+            # Calc range (fixed until Re-Analyse); chart view follows UI range
             calc_mask = (hist_full.index >= pd.to_datetime(st.session_state["calc_fib_start"])) & (hist_full.index <= (pd.to_datetime(st.session_state["calc_fib_end"]) + pd.offsets.MonthEnd(0)))
             calc_hist = hist_full.loc[calc_mask]
             fib_trends = find_multiple_trends(calc_hist, max_trends=4, strong_threshold=0.05)
@@ -543,109 +1414,111 @@ if df_port is not None:
                 "100% (Low Base)": l
             }
 
-            # B. Der gezeichnete Kursverlauf (X-Achse) reagiert SOFORT auf das Live-UI Fenster
-            vis_mask = (hist_full.index >= pd.to_datetime(st.session_state["ui_fib_start"])) & (hist_full.index <= (pd.to_datetime(st.session_state["ui_fib_end"]) + pd.offsets.MonthEnd(0)))
+            vis_mask = (hist_full.index >= pd.to_datetime(st.session_state["ui_fib_start"])) & (
+                hist_full.index <= (pd.to_datetime(st.session_state["ui_fib_end"]) + pd.offsets.MonthEnd(0))
+            )
             vis_hist = hist_full.loc[vis_mask]
-
-            main_trend_type = fib_trends[0]["type"] if fib_trends else "Bullish"
-            chart_icon = "📈" if main_trend_type == "Bullish" else "📉"
-            
-            st.markdown("---")
-            st.subheader(f"{chart_icon} {selected_ticker} - Technical Analysis View")
 
             if fib_trends:
                 main_trend = fib_trends[0]
-                banner_text = f"**{selected_ticker} Analyzed Trend {main_trend['type']}** {main_trend['f_start'].strftime('%Y-%m-%d')} - {main_trend['f_end'].strftime('%Y-%m-%d')} ({main_trend['move_pct']*100:.1f}%). {len(fib_trends)} trends detected."
-                if main_trend['type'] == "Bullish":
-                    st.success(f"🚀 {banner_text}")
-                else:
-                    st.info(f"🤖 {banner_text}")
+                main_trend_type = main_trend["type"]
+                trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
+                trend_icon = get_trend_icon_html(main_trend_type)
+                st.markdown(
+                    f'<p class="trend-line {trend_cls}">'
+                    f"{trend_icon} <b>{main_trend_type}</b> · "
+                    f"{main_trend['f_start'].strftime('%Y-%m-%d')} → {main_trend['f_end'].strftime('%Y-%m-%d')} · "
+                    f"{main_trend['move_pct'] * 100:+.1f}% · {len(fib_trends)} trend(s)"
+                    f"</p>",
+                    unsafe_allow_html=True,
+                )
 
-            with top_layout_right:
-                st.markdown(f"**Selected Asset:** `{selected_ticker}`")
-                inspect_active = st.toggle("📈 Visualize Trends Overlay", value=True, key="fibo_trend_inspect")
-
-            chart_col, sidebar_col = st.columns([3, 1])
+            chart_col, sidebar_col = st.columns([3.2, 0.8])
             with chart_col:
-                # Der Chart kriegt die Live-Zuschnitts-Historie (vis_hist), behält aber die fixen Berechnungen
-                st.plotly_chart(create_chart(selected_ticker, vis_hist, dynamic_fibs, fib_trends, inspect_active), use_container_width=True)            
+                st.plotly_chart(
+                    create_chart(selected_ticker, vis_hist, dynamic_fibs, fib_trends, inspect_active),
+                    use_container_width=True,
+                )            
             
             with sidebar_col:
                 curr_p = pick['data']['🌐 Price']
-                
-                # --- GENERIERUNG DES DOWNLOADABLE DATA-DUMPS (VARIANTE B) ---
-                detected_trends_str = ""
-                if fib_trends:
-                    for t in fib_trends:
-                        detected_trends_str += f"- {t['id']} ({t['type']}): {t['f_start'].strftime('%Y-%m-%d')} to {t['f_end'].strftime('%Y-%m-%d')} (Move: {t['move_pct']*100:.1f}%)\n"
-                else:
-                    detected_trends_str = "- Keine signifikanten Trends detektiert.\n"
-
-                fib_levels_str = ""
-                for label, val in dynamic_fibs.items():
-                    fib_levels_str += f"- {label}: {val:.2f} $\n"
-
-                gemini_data_dump = f"""[TECHNICAL ANALYSIS EXPORT: {selected_ticker}]
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Calculated Analysis Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}
-Current Price: {curr_p:.2f} $
-1Y Mean Target estimate: {pick['data']['Est Target']:.2f} $ (Upside: {pick['data']['Upside %']:.1f}%)
-Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
-
-Detected Trends:
-{detected_trends_str}
-Fibonacci Levels:
-{fib_levels_str}"""
-
-                # Der native, hochkompakte Download-Button, der das UI-Design schont
+                export_symbols = st.session_state.get("selected_symbols") or []
+                export_window_start = st.session_state.get("sel_start_ui")
+                export_window_end = st.session_state.get("sel_end_ui")
+                export_ready = bool(
+                    export_symbols and export_window_start and export_window_end
+                )
+                export_data = ""
+                if export_ready:
+                    export_data = build_multi_export_datasets(
+                        export_symbols,
+                        export_window_start,
+                        export_window_end,
+                        st.session_state.all_results,
+                    )
+                export_label = (
+                    f"📸 Export Datasets ({len(export_symbols)})"
+                    if export_symbols
+                    else "📸 Export Datasets"
+                )
                 st.download_button(
-                    label="📸 Export Dataset for Gemini",
-                    data=gemini_data_dump,
-                    file_name=f"gemini_analysis_{selected_ticker}.txt",
+                    label=export_label,
+                    data=export_data,
+                    file_name=(
+                        f"gemini_analysis_{len(export_symbols)}_symbols_"
+                        f"{export_window_start}_{export_window_end}.txt"
+                        if export_ready
+                        else "gemini_analysis.txt"
+                    ),
                     mime="text/plain",
                     use_container_width=True,
-                    help="Lädt einen kompakten Datensatz herunter, den du direkt an Gemini senden kannst."
+                    disabled=not export_ready,
+                    help=(
+                        "Export technical datasets for all selected table rows "
+                        f"using the current From–To window ({export_window_start or '—'} → "
+                        f"{export_window_end or '—'})."
+                    ),
                 )
 
-                st.markdown("<div style='padding-top:10px;'></div>", unsafe_allow_html=True)
-                st.markdown(f"##### Key Metrics")
-                
+                st.markdown('<p style="font-size:0.82rem;font-weight:700;margin:0.2rem 0 0.15rem 0;">Metrics</p>', unsafe_allow_html=True)
                 try:
-                    s_obj = yf.Ticker(selected_ticker)
-                    target = s_obj.info.get('targetMeanPrice')
+                    target = pick["data"].get("Est Target")
+                    if target is None:
+                        est_target, _, _ = get_symbol_metadata(selected_ticker)
+                        target = est_target or 0
+                        pick["data"]["Est Target"] = target
+                        if target and curr_p:
+                            pick["data"]["Upside %"] = ((target / curr_p) - 1) * 100
                     if target:
                         up_val = ((target / curr_p) - 1) * 100
-                        if up_val > 0:
-                            st.markdown(f"""
-                                <div style="background-color: #e6f4ea; color: #137333; padding: 10px; border-radius: 4px; font-weight: bold; font-size:13px;">
-                                    1Y Target Estimate: {target:.2f} $<br>↑ {up_val:.1f}% Upside from {curr_p:.2f} $
-                                </div>
-                            """, unsafe_allow_html=True)
-                        else:       
-                            st.markdown(f"""
-                                <div style="background-color: #fce8e6; color: #c5221f; padding: 10px; border-radius: 4px; font-weight: bold; font-size:13px;">
-                                    1Y Target Estimate: {target:.2f} $<br>↓ {abs(up_val):.1f}% Downside from {curr_p:.2f} $
-                                </div>
-                            """, unsafe_allow_html=True)
+                        chip_cls = "metric-chip" if up_val > 0 else "metric-chip down"
+                        arrow = "↑" if up_val > 0 else "↓"
+                        st.markdown(
+                            f'<div class="{chip_cls}">Target {target:.2f} $ · {arrow} {abs(up_val):.1f}% vs {curr_p:.2f} $</div>',
+                            unsafe_allow_html=True,
+                        )
                     else:
-                        st.caption("Analyst-Target data not loaded")
-                except:
-                    st.caption("Analyst-Target not available")
+                        st.caption("Analyst target not loaded")
+                except Exception:
+                    st.caption("Analyst target unavailable")
 
-                if pick['data']['Div Yield'] > 0:
-                    st.markdown(f"""
-                        <div style="background-color: #e8f0fe; color: #1a73e8; padding: 10px; border-radius: 4px; font-weight: bold; font-size:13px; margin-top:5px;">
-                            💵 Live Dividend Yield: {pick["data"]["Div Yield"]:.1f}%
-                        </div>
-                    """, unsafe_allow_html=True)
+                div_y = pick["data"].get("Div Yield")
+                if div_y is not None and div_y > 0:
+                    st.markdown(
+                        f'<div class="metric-chip div">Div yield {div_y:.1f}%</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                st.markdown("<div style='padding-top:10px;'></div>", unsafe_allow_html=True)
-                st.markdown("##### Fibonacci Levels")
-                st.caption(f"Calculated Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}")
-                
+                st.markdown('<p style="font-size:0.82rem;font-weight:700;margin:0.25rem 0 0.1rem 0;">Fibonacci</p>', unsafe_allow_html=True)
+                st.caption(f"{st.session_state['calc_fib_start']} – {st.session_state['calc_fib_end']}")
+                fib_lines = []
                 for label, val in dynamic_fibs.items():
                     prox = abs(curr_p - val) / val * 100
-                    prefix = "🎯" if prox < 1.5 else "⚪"
-                    st.write(f"{prefix} **{label}:** {val:.2f}")
+                    prefix = "🎯" if prox < 1.5 else "·"
+                    fib_lines.append(f"{prefix} {label}: {val:.2f}")
+                st.markdown(
+                    "<span style='font-size:0.78rem;line-height:1.35'>" + "<br>".join(fib_lines) + "</span>",
+                    unsafe_allow_html=True,
+                )
         else:
-            st.error("Gefundener Ticker konnte im Speicher nicht validiert werden.")
+            st.error("Selected ticker could not be validated in session.")

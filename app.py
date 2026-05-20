@@ -125,6 +125,9 @@ st.markdown("""
     [data-testid="stProgress"] {
         margin-bottom: 0.2rem;
     }
+    [data-testid="stProgress"] label {
+        font-size: 0.8rem;
+    }
     .kpi-strip {
         display: flex;
         flex-wrap: wrap;
@@ -482,7 +485,15 @@ def load_portfolio(uploaded_file):
             df = _read_uploaded_portfolio(uploaded_file)
             st.session_state.uploaded_portfolio_cache_key = cache_key
             st.session_state.uploaded_portfolio_df = df
+            st.session_state.uploaded_portfolio_name = uploaded_file.name
             return df, uploaded_file.name
+
+        cached_df = st.session_state.get("uploaded_portfolio_df")
+        if cached_df is not None:
+            return (
+                cached_df.copy(),
+                st.session_state.get("uploaded_portfolio_name", "Uploaded portfolio"),
+            )
 
         cli_file = get_cli_filename()
         if cli_file is not None:
@@ -670,8 +681,8 @@ def process_metadata_background_batch():
 
 
 @st.fragment(run_every=METADATA_POLL_SECONDS)
-def portfolio_table_live():
-    """Table + background analyst loader; fragment reruns as rows fill in."""
+def portfolio_metadata_progress():
+    """Background analyst loader only — table stays in main app for row selection."""
     if "all_results" not in st.session_state or not st.session_state.all_results:
         return
 
@@ -682,32 +693,150 @@ def portfolio_table_live():
     done = total - remaining
 
     if st.session_state.get("metadata_bg_active") and total > 0:
-        st.progress(min(1.0, done / total), text=f"Loading analyst data: {done}/{total}")
-        next_sym = st.session_state.metadata_queue[0] if st.session_state.metadata_queue else "…"
-        st.caption(f"Next: **{next_sym}** — table updates automatically.")
+        next_sym = (
+            st.session_state.metadata_queue[0]
+            if st.session_state.metadata_queue
+            else "…"
+        )
+        st.progress(
+            min(1.0, done / total),
+            text=f"Loading analyst data: {done}/{total} · Next: {next_sym}",
+        )
     elif st.session_state.get("metadata_enriched"):
         notice_at = st.session_state.get("analyst_loaded_notice_at")
         if notice_at and (time.time() - notice_at) < ANALYST_LOADED_NOTICE_SEC:
-            st.caption("✓ Analyst data loaded.")
+            st.progress(1.0, text="✓ Analyst data loaded.")
+        elif notice_at:
+            st.session_state.pop("analyst_loaded_notice_at", None)
 
+
+def normalize_table_selection_rows(raw_rows, prev_rows):
+    """
+    Plain click -> only the clicked row. Shift+click range -> contiguous rows.
+    Uncheck one row -> keep the rest. Streamlit does not expose modifier keys.
+    """
+    new_rows = sorted({int(r) for r in raw_rows})
+    prev_rows = sorted({int(r) for r in (prev_rows or [])})
+
+    if not new_rows:
+        return []
+
+    if len(new_rows) == 1:
+        return new_rows
+
+    # Shift+click range (contiguous block).
+    if new_rows[-1] - new_rows[0] + 1 == len(new_rows):
+        return new_rows
+
+    added = set(new_rows) - set(prev_rows)
+    removed = set(prev_rows) - set(new_rows)
+
+    # Uncheck exactly one row — keep remaining export selection.
+    if len(removed) == 1 and not added:
+        return new_rows
+
+    # Plain click while other rows were checked: keep only the newly activated row(s).
+    if len(added) == 1:
+        return [next(iter(added))]
+    if added and not removed:
+        return [max(added)]
+
+    return [new_rows[-1]]
+
+
+def rows_to_symbols(row_indices, summary_df):
+    symbols = []
+    last_row_idx = None
+    for row_idx in sorted(row_indices):
+        if row_idx < 0 or row_idx >= len(summary_df):
+            continue
+        sym = str(summary_df.iloc[row_idx]["Symbol"])
+        symbols.append(sym)
+        last_row_idx = row_idx
+    return symbols, last_row_idx
+
+
+def commit_selection_state(rows, summary_df):
+    """Persist normalized row indices to export list and detail focus."""
+    st.session_state.table_sel_rows = rows
+    symbols, last_row_idx = rows_to_symbols(rows, summary_df)
+    st.session_state.selected_symbols = symbols
+    if not symbols:
+        return
+    focus = symbols[-1]
+    if st.session_state.get("selected_symbol") != focus:
+        st.session_state.selected_symbol = focus
+        st.session_state.ticker_index = last_row_idx
+        st.session_state["fibo_needs_refresh"] = True
+        prioritize_metadata_symbol(focus)
+
+
+def reconcile_table_selection_before_render(summary_df, table_key="portfolio_table"):
+    """
+    Normalize selection before st.dataframe mounts.
+    Streamlit updates session state from the UI before the script runs; we align
+    it here so rapid clicks do not race with post-render corrections.
+    """
+    if st.session_state.pop("clear_table_selection", False):
+        st.session_state.table_sel_rows = []
+        st.session_state.selected_symbols = []
+        st.session_state[table_key] = {"selection": {"rows": []}}
+        return False
+
+    raw_rows = []
+    widget_state = st.session_state.get(table_key)
+    if isinstance(widget_state, dict):
+        raw_rows = list(widget_state.get("selection", {}).get("rows", []))
+
+    prev_rows = st.session_state.get("table_sel_rows", [])
+    rows = normalize_table_selection_rows(raw_rows, prev_rows)
+    commit_selection_state(rows, summary_df)
+
+    canonical = sorted({int(r) for r in raw_rows})
+    if rows != canonical:
+        st.session_state[table_key] = {"selection": {"rows": rows}}
+        st.rerun()
+        return True
+    return False
+
+
+def render_portfolio_table_section():
+    """Tabbed column views with one multi-select table on the active tab only."""
     summary_df = pd.DataFrame([x["data"] for x in st.session_state.all_results])
+    if reconcile_table_selection_before_render(summary_df):
+        return
     view_options = list(TABLE_VIEW_COLUMNS.keys())
-    tab_standard, tab_trends, tab_roi = st.tabs(view_options)
-    selection_event = None
-    for view_name, tab in zip(view_options, (tab_standard, tab_trends, tab_roi)):
-        with tab:
-            event = render_portfolio_table(summary_df, view_name)
-            if event and event.selection.get("rows"):
-                selection_event = event
+    default_view = st.session_state.get("portfolio_table_view", view_options[0])
+    if default_view not in view_options:
+        default_view = view_options[0]
 
-    if selection_event and selection_event.selection.get("rows"):
-        selected_row_idx = selection_event.selection["rows"][0]
-        if "ticker_index" not in st.session_state or st.session_state.ticker_index != selected_row_idx:
-            st.session_state.ticker_index = selected_row_idx
-            st.session_state["fibo_needs_refresh"] = True
-            if selected_row_idx < len(st.session_state.ticker_liste):
-                prioritize_metadata_symbol(st.session_state.ticker_liste[selected_row_idx])
-            st.rerun()
+    tab_widgets = st.tabs(
+        view_options,
+        key="portfolio_table_view",
+        default=default_view,
+        on_change="rerun",
+    )
+
+    for view_name, tab in zip(view_options, tab_widgets):
+        if tab.open:
+            with tab:
+                render_portfolio_table(summary_df, view_name, table_key="portfolio_table")
+
+    selected_symbols = st.session_state.get("selected_symbols") or []
+    focus = st.session_state.get("selected_symbol")
+    if selected_symbols:
+        sym_label = ", ".join(selected_symbols) if len(selected_symbols) <= 4 else (
+            f"{', '.join(selected_symbols[:3])}, +{len(selected_symbols) - 3} more"
+        )
+        st.caption(
+            f"**{len(selected_symbols)}** selected for export ({sym_label})"
+            + (f" · Detail: **{focus}**" if focus else "")
+        )
+    else:
+        st.caption(
+            "Click a row for **single** export selection · **Shift+click** for a row range · "
+            "uncheck to remove from export"
+        )
 
 
 def build_hist_by_symbol(bulk_close, symbols):
@@ -824,7 +953,7 @@ def get_table_format_dict(columns):
     return format_dict
 
 
-def render_portfolio_table(summary_df, view_name):
+def render_portfolio_table(summary_df, view_name, table_key="portfolio_table"):
     """Render one table detail view; returns the dataframe selection event."""
     cols = [c for c in TABLE_VIEW_COLUMNS[view_name] if c in summary_df.columns]
     if "Symbol" in summary_df.columns and "Symbol" not in cols:
@@ -855,9 +984,95 @@ def render_portfolio_table(summary_df, view_name):
         styled,
         use_container_width=True,
         on_select="rerun",
-        selection_mode="single-row",
-        key=f"portfolio_table_{view_name}",
+        selection_mode="multi-row",
+        key=table_key,
     )
+
+
+def normalize_ohlc_hist(hist):
+    if hist is None or hist.empty:
+        return pd.DataFrame()
+    hist = hist.copy()
+    if getattr(hist.index, "tz", None) is not None:
+        hist.index = hist.index.tz_localize(None)
+    if "High" not in hist.columns:
+        hist["High"] = hist["Close"]
+        hist["Low"] = hist["Close"]
+    return hist
+
+
+def compute_fibonacci_levels(calc_hist):
+    h = 0 if calc_hist.empty else calc_hist["High"].max()
+    l = 0 if calc_hist.empty else calc_hist["Low"].min()
+    d = h - l
+    return {
+        "0% (High)": h,
+        "38.2% Retracement": h - 0.382 * d,
+        "50.0% Center Line": h - 0.5 * d,
+        "61.8% Golden Pocket": h - 0.618 * d,
+        "100% (Low Base)": l,
+    }
+
+
+def slice_hist_to_window(hist, window_start, window_end):
+    mask = (hist.index >= pd.to_datetime(window_start)) & (
+        hist.index <= (pd.to_datetime(window_end) + pd.offsets.MonthEnd(0))
+    )
+    return hist.loc[mask]
+
+
+def build_symbol_export_block(symbol, window_start, window_end, all_results):
+    pick = next((item for item in all_results if item["data"]["Symbol"] == symbol), None)
+    if not pick:
+        return ""
+    hist_full = normalize_ohlc_hist(get_ticker_ohlc_history(symbol, DETAIL_HISTORY_PERIOD))
+    if hist_full.empty:
+        hist_full = normalize_ohlc_hist(pick["hist"])
+    if hist_full.empty:
+        return f"[TECHNICAL ANALYSIS EXPORT: {symbol}]\nNo price history available.\n"
+
+    calc_hist = slice_hist_to_window(hist_full, window_start, window_end)
+    fib_trends = find_multiple_trends(calc_hist, max_trends=4, strong_threshold=0.05)
+    dynamic_fibs = compute_fibonacci_levels(calc_hist)
+    curr_p = pick["data"]["🌐 Price"]
+
+    if fib_trends:
+        detected_trends_str = "".join(
+            f"- {t['id']} ({t['type']}): {t['f_start'].strftime('%Y-%m-%d')} to "
+            f"{t['f_end'].strftime('%Y-%m-%d')} (Move: {t['move_pct'] * 100:.1f}%)\n"
+            for t in fib_trends
+        )
+    else:
+        detected_trends_str = "- No significant trends detected.\n"
+
+    fib_levels_str = "".join(f"- {label}: {val:.2f} $\n" for label, val in dynamic_fibs.items())
+
+    return f"""[TECHNICAL ANALYSIS EXPORT: {symbol}]
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Analysis window: {window_start} to {window_end}
+Current Price: {curr_p:.2f} $
+1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
+Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
+
+Detected Trends:
+{detected_trends_str}
+Fibonacci Levels:
+{fib_levels_str}"""
+
+
+def build_multi_export_datasets(symbols, window_start, window_end, all_results):
+    blocks = [
+        build_symbol_export_block(symbol, window_start, window_end, all_results)
+        for symbol in symbols
+    ]
+    blocks = [b for b in blocks if b]
+    header = (
+        f"[PORTFOLIO EXPORT — {len(blocks)} symbol(s)]\n"
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Time window: {window_start} → {window_end}\n"
+        f"Symbols: {', '.join(symbols)}\n"
+    )
+    return header + ("\n" + ("=" * 72) + "\n\n").join(blocks)
 
 
 # --- CHARTING ---
@@ -923,14 +1138,26 @@ uploaded_file = None
 with actions_col:
     btn_upload, btn_reset, btn_refresh = st.columns(3, gap="small")
     with btn_upload:
-        with st.popover("📁", help="Upload portfolio CSV", use_container_width=True):
-            uploaded_file = st.file_uploader(
-                "Portfolio CSV (semicolon-separated)",
-                type=["csv"],
-                key=f"portfolio_upload_{st.session_state.uploader_key}",
-            )
+        upload_popover = st.popover(
+            "📁",
+            help="Upload portfolio CSV",
+            use_container_width=True,
+            key="portfolio_upload_popover",
+            on_change="rerun",
+        )
+        with upload_popover:
+            if upload_popover.open:
+                uploaded_file = st.file_uploader(
+                    "Portfolio CSV (semicolon-separated)",
+                    type=["csv"],
+                    key=f"portfolio_upload_{st.session_state.uploader_key}",
+                )
     with btn_reset:
-        show_reset = uploaded_file is not None or get_cli_filename() is not None
+        show_reset = (
+            uploaded_file is not None
+            or st.session_state.get("uploaded_portfolio_df") is not None
+            or get_cli_filename() is not None
+        )
         if show_reset and st.button(
             "❌", help="Clear upload & use default portfolio", use_container_width=True
         ):
@@ -939,6 +1166,8 @@ with actions_col:
                 "all_results",
                 "uploaded_portfolio_cache_key",
                 "uploaded_portfolio_df",
+                "uploaded_portfolio_name",
+                "portfolio_upload_popover",
                 "metadata_enriched",
                 "metadata_bg_active",
                 "metadata_queue",
@@ -946,9 +1175,17 @@ with actions_col:
                 "enriched_symbols",
                 "current_loaded_name",
                 "analyst_loaded_notice_at",
+                "selected_symbol",
+                "selected_symbols",
+                "table_sel_rows",
+                "ticker_index",
+                "portfolio_table_view",
+                "clear_table_selection",
             ):
                 if key in st.session_state:
                     del st.session_state[key]
+            if "portfolio_table" in st.session_state:
+                del st.session_state["portfolio_table"]
             st.rerun()
     with btn_refresh:
         refresh_clicked = st.button(
@@ -956,6 +1193,7 @@ with actions_col:
         )
 
 df_port, current_portfolio_name = load_portfolio(uploaded_file)
+close_upload_popover = uploaded_file is not None
 
 if df_port is not None:
     if 'current_loaded_name' not in st.session_state or st.session_state.current_loaded_name != current_portfolio_name:
@@ -982,8 +1220,21 @@ if df_port is not None:
         st.session_state.total_depot_cost = total_depot_cost
         st.session_state.total_depot_target = total_depot_target
         st.session_state.ticker_liste = [x["data"]["Symbol"] for x in results_temp]
+        if results_temp:
+            first_symbol = results_temp[0]["data"]["Symbol"]
+            st.session_state.selected_symbol = first_symbol
+            st.session_state.selected_symbols = []
+            st.session_state.table_sel_rows = []
+            st.session_state.ticker_index = 0
+            st.session_state.clear_table_selection = True
+            if "portfolio_table" in st.session_state:
+                del st.session_state["portfolio_table"]
         st.session_state.portfolio_symbols = unique_symbols
         start_metadata_background_load(unique_symbols)
+
+    if close_upload_popover:
+        st.session_state.portfolio_upload_popover = False
+        st.rerun()
 
     all_results = st.session_state.all_results
 
@@ -1016,24 +1267,37 @@ if df_port is not None:
             "metadata_total",
             "enriched_symbols",
             "analyst_loaded_notice_at",
+            "selected_symbol",
+            "selected_symbols",
+            "table_sel_rows",
+            "ticker_index",
+            "portfolio_table_view",
+            "clear_table_selection",
         ):
             if key in st.session_state:
                 del st.session_state[key]
+        if "portfolio_table" in st.session_state:
+            del st.session_state["portfolio_table"]
         st.rerun()
 
     if "all_results" in st.session_state and len(st.session_state.all_results) > 0:
-        portfolio_table_live()
+        portfolio_metadata_progress()
+        render_portfolio_table_section()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     ticker_liste = st.session_state.get('ticker_liste', [])
 
     if ticker_liste:
-        if 'ticker_index' not in st.session_state or st.session_state.ticker_index >= len(ticker_liste):
+        if st.session_state.get("selected_symbol") not in ticker_liste:
+            st.session_state.selected_symbol = ticker_liste[0]
             st.session_state.ticker_index = 0
             st.session_state["fibo_needs_refresh"] = True
+        elif "ticker_index" not in st.session_state or st.session_state.ticker_index >= len(ticker_liste):
+            st.session_state.ticker_index = ticker_liste.index(st.session_state.selected_symbol)
+            st.session_state["fibo_needs_refresh"] = True
 
-        selected_ticker = ticker_liste[st.session_state.ticker_index]
+        selected_ticker = st.session_state.selected_symbol
         pick = next((item for item in st.session_state.all_results if item['data']['Symbol'] == selected_ticker), None) 
         
         if pick:
@@ -1178,39 +1442,42 @@ if df_port is not None:
             
             with sidebar_col:
                 curr_p = pick['data']['🌐 Price']
-                
-                # --- GENERIERUNG DES DOWNLOADABLE DATA-DUMPS (VARIANTE B) ---
-                detected_trends_str = ""
-                if fib_trends:
-                    for t in fib_trends:
-                        detected_trends_str += f"- {t['id']} ({t['type']}): {t['f_start'].strftime('%Y-%m-%d')} to {t['f_end'].strftime('%Y-%m-%d')} (Move: {t['move_pct']*100:.1f}%)\n"
-                else:
-                    detected_trends_str = "- No significant trends detected.\n"
-
-                fib_levels_str = ""
-                for label, val in dynamic_fibs.items():
-                    fib_levels_str += f"- {label}: {val:.2f} $\n"
-
-                gemini_data_dump = f"""[TECHNICAL ANALYSIS EXPORT: {selected_ticker}]
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Calculated Analysis Basis: {st.session_state['calc_fib_start']} to {st.session_state['calc_fib_end']}
-Current Price: {curr_p:.2f} $
-1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
-Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
-
-Detected Trends:
-{detected_trends_str}
-Fibonacci Levels:
-{fib_levels_str}"""
-
-                # Der native, hochkompakte Download-Button, der das UI-Design schont
+                export_symbols = st.session_state.get("selected_symbols") or []
+                export_window_start = st.session_state.get("sel_start_ui")
+                export_window_end = st.session_state.get("sel_end_ui")
+                export_ready = bool(
+                    export_symbols and export_window_start and export_window_end
+                )
+                export_data = ""
+                if export_ready:
+                    export_data = build_multi_export_datasets(
+                        export_symbols,
+                        export_window_start,
+                        export_window_end,
+                        st.session_state.all_results,
+                    )
+                export_label = (
+                    f"📸 Export Datasets ({len(export_symbols)})"
+                    if export_symbols
+                    else "📸 Export Datasets"
+                )
                 st.download_button(
-                    label="📸 Export Dataset for Gemini",
-                    data=gemini_data_dump,
-                    file_name=f"gemini_analysis_{selected_ticker}.txt",
+                    label=export_label,
+                    data=export_data,
+                    file_name=(
+                        f"gemini_analysis_{len(export_symbols)}_symbols_"
+                        f"{export_window_start}_{export_window_end}.txt"
+                        if export_ready
+                        else "gemini_analysis.txt"
+                    ),
                     mime="text/plain",
                     use_container_width=True,
-                    help="Download a compact dataset for Gemini.",
+                    disabled=not export_ready,
+                    help=(
+                        "Export technical datasets for all selected table rows "
+                        f"using the current From–To window ({export_window_start or '—'} → "
+                        f"{export_window_end or '—'})."
+                    ),
                 )
 
                 st.markdown('<p style="font-size:0.82rem;font-weight:700;margin:0.2rem 0 0.15rem 0;">Metrics</p>', unsafe_allow_html=True)

@@ -450,12 +450,13 @@ TABLE_VIEW_COLUMNS = {
     ],
     "ROI": [
         "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
-        "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "Est Target",
+        "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "∆ Act-Target %", "Est Target",
     ],
 }
 
 TABLE_PERCENT_COLS = [
-    "📈 Total %", "Change %", "Upside %", "Ø CAGR", "Target %", "5D", "1M", "6M", "12M",
+    "📈 Total %", "Change %", "Upside %", "Ø CAGR", "Target %", "∆ Act-Target %",
+    "5D", "1M", "6M", "12M",
 ]
 TABLE_CURRENCY_COLS = ["📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price"]
 TABLE_PNL_COLS = ["Total $"]
@@ -937,6 +938,8 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
 
         diff_target_abs = abs(target - price)
         diff_target_pct = abs(target - price) / price if price != 0 else 0
+        # Negative = below target (red); 0+ = at/above target (green)
+        act_target_delta_pct = ((price - target) / price * 100) if price != 0 else 0.0
 
         purchase_date = row["PurchaseDate"]
         if pd.isna(purchase_date) or isinstance(purchase_date, str):
@@ -968,6 +971,7 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
             if purchase_date is not None and not pd.isna(purchase_date)
             else "Unknown",
             "📈 Target": target,
+            "∆ Act-Target %": act_target_delta_pct,
             "Target %": diff_target_pct * 100,
             "Target $": diff_target_abs,
             "📈 Total %": ((current_val / current_cost) - 1) * 100,

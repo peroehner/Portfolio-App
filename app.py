@@ -1053,17 +1053,41 @@ def normalize_ohlc_hist(hist):
     return hist
 
 
-def compute_fibonacci_levels(calc_hist):
-    h = 0 if calc_hist.empty else calc_hist["High"].max()
-    l = 0 if calc_hist.empty else calc_hist["Low"].min()
-    d = h - l
-    return {
+def compute_fibonacci_levels(calc_hist, main_trend=None):
+    """Retracements from leg high→low; anchored to main trend (T1) when available."""
+    anchor_note = "window high/low (no significant trend)"
+    h = l = 0.0
+
+    if calc_hist is not None and not calc_hist.empty:
+        if main_trend:
+            leg_mask = (calc_hist.index >= pd.to_datetime(main_trend["f_start"])) & (
+                calc_hist.index <= pd.to_datetime(main_trend["f_end"])
+            )
+            leg_hist = calc_hist.loc[leg_mask]
+            if not leg_hist.empty:
+                h = float(leg_hist["High"].max())
+                l = float(leg_hist["Low"].min())
+            else:
+                h = float(max(main_trend["price_start"], main_trend["price_end"]))
+                l = float(min(main_trend["price_start"], main_trend["price_end"]))
+            anchor_note = (
+                f"{main_trend.get('id', 'T1')} {main_trend['type']}: "
+                f"{main_trend['f_start'].strftime('%Y-%m-%d')} → "
+                f"{main_trend['f_end'].strftime('%Y-%m-%d')}"
+            )
+        else:
+            h = float(calc_hist["High"].max())
+            l = float(calc_hist["Low"].min())
+
+    d = max(h - l, 0.0)
+    levels = {
         "0% (High)": h,
         "38.2% Retracement": h - 0.382 * d,
         "50.0% Center Line": h - 0.5 * d,
         "61.8% Golden Pocket": h - 0.618 * d,
         "100% (Low Base)": l,
     }
+    return levels, anchor_note
 
 
 def slice_hist_to_window(hist, window_start, window_end):
@@ -1085,7 +1109,8 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
 
     calc_hist = slice_hist_to_window(hist_full, window_start, window_end)
     fib_trends = find_multiple_trends(calc_hist, max_trends=4, strong_threshold=0.05)
-    dynamic_fibs = compute_fibonacci_levels(calc_hist)
+    main_trend = fib_trends[0] if fib_trends else None
+    dynamic_fibs, fib_anchor = compute_fibonacci_levels(calc_hist, main_trend)
     curr_p = pick["data"]["🌐 Price"]
 
     if fib_trends:
@@ -1102,6 +1127,7 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
     return f"""[TECHNICAL ANALYSIS EXPORT: {symbol}]
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Analysis window: {window_start} to {window_end}
+Fibonacci anchor: {fib_anchor}
 Current Price: {curr_p:.2f} $
 1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
 Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
@@ -1461,26 +1487,15 @@ if df_port is not None:
             calc_mask = (hist_full.index >= pd.to_datetime(st.session_state["calc_fib_start"])) & (hist_full.index <= (pd.to_datetime(st.session_state["calc_fib_end"]) + pd.offsets.MonthEnd(0)))
             calc_hist = hist_full.loc[calc_mask]
             fib_trends = find_multiple_trends(calc_hist, max_trends=4, strong_threshold=0.05)
-
-            h = 0 if calc_hist.empty else calc_hist['High'].max()
-            l = 0 if calc_hist.empty else calc_hist['Low'].min()
-            d = h - l
-            
-            dynamic_fibs = {
-                "0% (High)": h,
-                "38.2% Retracement": h - 0.382 * d,
-                "50.0% Center Line": h - 0.5 * d,
-                "61.8% Golden Pocket": h - 0.618 * d,
-                "100% (Low Base)": l
-            }
+            main_trend = fib_trends[0] if fib_trends else None
+            dynamic_fibs, fib_anchor = compute_fibonacci_levels(calc_hist, main_trend)
 
             vis_mask = (hist_full.index >= pd.to_datetime(st.session_state["ui_fib_start"])) & (
                 hist_full.index <= (pd.to_datetime(st.session_state["ui_fib_end"]) + pd.offsets.MonthEnd(0))
             )
             vis_hist = hist_full.loc[vis_mask]
 
-            if fib_trends:
-                main_trend = fib_trends[0]
+            if main_trend:
                 main_trend_type = main_trend["type"]
                 trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
                 trend_icon = get_trend_icon_html(main_trend_type)
@@ -1570,7 +1585,9 @@ if df_port is not None:
                     )
 
                 st.markdown('<p style="font-size:0.82rem;font-weight:700;margin:0.25rem 0 0.1rem 0;">Fibonacci</p>', unsafe_allow_html=True)
-                st.caption(f"{st.session_state['calc_fib_start']} – {st.session_state['calc_fib_end']}")
+                st.caption(
+                    f"{st.session_state['calc_fib_start']} – {st.session_state['calc_fib_end']} · {fib_anchor}"
+                )
                 fib_lines = []
                 for label, val in dynamic_fibs.items():
                     prox = abs(curr_p - val) / val * 100

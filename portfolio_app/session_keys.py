@@ -2,9 +2,7 @@
 
 PORTFOLIO_RESET_KEYS = (
     "all_results",
-    "uploaded_portfolio_cache_key",
-    "uploaded_portfolio_df",
-    "uploaded_portfolio_name",
+    "holdings_expanded",
     "show_upload_dialog",
     "upload_dismiss_key",
     "metadata_enriched",
@@ -13,6 +11,7 @@ PORTFOLIO_RESET_KEYS = (
     "metadata_total",
     "enriched_symbols",
     "current_loaded_name",
+    "analysis_portfolio_key",
     "analyst_loaded_notice_at",
     "selected_symbol",
     "selected_symbols",
@@ -25,6 +24,7 @@ PORTFOLIO_RESET_KEYS = (
 REFRESH_CLEAR_KEYS = (
     "all_results",
     "current_loaded_name",
+    "analysis_portfolio_key",
     "metadata_enriched",
     "metadata_bg_active",
     "metadata_queue",

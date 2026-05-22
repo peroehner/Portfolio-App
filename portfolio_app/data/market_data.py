@@ -1,5 +1,6 @@
 """Yahoo Finance price and FX data (cached)."""
 import time
+from typing import Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -116,3 +117,34 @@ def fetch_portfolio_metadata_parallel(symbols_tuple):
                 results[symbol] = (0.0, 0.0, 0.0)
             time.sleep(0.15)
     return results
+
+
+def _guess_currency(symbol: str) -> str:
+    try:
+        info = yf.Ticker(symbol).info or {}
+        cur = str(info.get("currency") or "USD").strip().upper()
+        return "EUR" if cur == "EUR" else "USD"
+    except Exception:
+        return "USD"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def validate_symbol(ticker_symbol: str) -> Tuple[bool, str, Optional[str]]:
+    """
+    Check that Yahoo Finance has price history for this ticker.
+
+    Returns (valid, normalized_symbol, currency_hint).
+    """
+    symbol = str(ticker_symbol).strip().upper()
+    if not symbol or len(symbol) > 12:
+        return False, symbol, None
+    try:
+        hist = yf.Ticker(symbol).history(period="5d")
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            return False, symbol, None
+        close = hist["Close"].dropna()
+        if close.empty or float(close.iloc[-1]) <= 0:
+            return False, symbol, None
+        return True, symbol, _guess_currency(symbol)
+    except Exception:
+        return False, symbol, None

@@ -1,0 +1,76 @@
+"""Session-scoped user and portfolio identity."""
+import streamlit as st
+
+from portfolio_app.domain.models import ActivePortfolio, User
+from portfolio_app.services.portfolio_service import PortfolioService
+
+_DEFAULT_EMAIL = "user@local"
+
+
+def get_portfolio_service() -> PortfolioService:
+    if "portfolio_service" not in st.session_state:
+        st.session_state.portfolio_service = PortfolioService()
+    return st.session_state.portfolio_service
+
+
+def get_session_email() -> str:
+    return st.session_state.get("user_email", _DEFAULT_EMAIL).strip().lower()
+
+
+def set_session_email(email: str):
+    st.session_state.user_email = email.strip().lower()
+
+
+def get_session_user() -> User:
+    return get_portfolio_service().get_or_create_user(get_session_email())
+
+
+def get_active_portfolio_id() -> int | None:
+    return st.session_state.get("active_portfolio_id")
+
+
+def set_active_portfolio_id(portfolio_id: int):
+    st.session_state.active_portfolio_id = portfolio_id
+
+
+def get_portfolio_data_version() -> int:
+    return int(st.session_state.get("portfolio_data_version", 0))
+
+
+def bump_portfolio_data_version():
+    st.session_state.portfolio_data_version = get_portfolio_data_version() + 1
+
+
+def get_analysis_portfolio_key() -> str | None:
+    return st.session_state.get("analysis_portfolio_key")
+
+
+def set_analysis_portfolio_key(key: str):
+    st.session_state.analysis_portfolio_key = key
+
+
+def invalidate_analysis(*, refetch_metadata: bool = True):
+    """Force portfolio analysis reload on next render."""
+    st.session_state.pop("analysis_portfolio_key", None)
+    st.session_state.pop("current_loaded_name", None)
+    st.session_state["_pending_refetch_metadata"] = refetch_metadata
+    bump_portfolio_data_version()
+
+
+def consume_refetch_metadata_flag() -> bool:
+    """One-shot flag: whether the pending reload should restart analyst fetch."""
+    return st.session_state.pop("_pending_refetch_metadata", True)
+
+
+def load_active_portfolio() -> ActivePortfolio:
+    svc = get_portfolio_service()
+    user = get_session_user()
+    portfolio_id = get_active_portfolio_id()
+    if portfolio_id:
+        active = svc.load_portfolio(user.id, portfolio_id)
+        if active:
+            return active
+    active = svc.ensure_default_portfolio(user)
+    set_active_portfolio_id(active.portfolio_id)
+    svc.remember_last_portfolio(user.id, active.portfolio_id)
+    return active

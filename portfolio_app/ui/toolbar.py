@@ -1,10 +1,17 @@
 """Upload, reset, and refresh toolbar."""
+import os
+
 import streamlit as st
 
-from portfolio_app.data.portfolio_loader import (
-    _read_uploaded_portfolio,
-    get_cli_filename,
+from portfolio_app.data.portfolio_loader import _read_uploaded_portfolio
+from portfolio_app.services.session_context import (
+    get_portfolio_service,
+    get_session_user,
+    invalidate_analysis,
+    load_active_portfolio,
+    set_active_portfolio_id,
 )
+from portfolio_app.ui.holdings_editor import clear_holdings_draft, set_holdings_panel_open
 from portfolio_app.session_keys import (
     PORTFOLIO_RESET_KEYS,
     clear_portfolio_table_widget,
@@ -42,15 +49,21 @@ def upload_portfolio_dialog():
     if uploaded_file is not None:
         file_key = f"{uploaded_file.name}:{getattr(uploaded_file, 'size', 0)}"
         if st.session_state.get("upload_dismiss_key") != file_key:
-            cache_key = (
-                f"{st.session_state.uploader_key}:"
-                f"{uploaded_file.name}:"
-                f"{getattr(uploaded_file, 'size', 0)}"
-            )
             df = _read_uploaded_portfolio(uploaded_file)
-            st.session_state.uploaded_portfolio_cache_key = cache_key
-            st.session_state.uploaded_portfolio_df = df
-            st.session_state.uploaded_portfolio_name = uploaded_file.name
+            user = get_session_user()
+            active = load_active_portfolio()
+            svc = get_portfolio_service()
+            imported = svc.import_csv(
+                user.id,
+                active.portfolio_id,
+                df,
+                name=os.path.splitext(uploaded_file.name)[0],
+            )
+            set_active_portfolio_id(imported.portfolio_id)
+            svc.remember_last_portfolio(user.id, imported.portfolio_id)
+            clear_holdings_draft(imported.portfolio_id)
+            set_holdings_panel_open(True)
+            invalidate_analysis()
             st.session_state.upload_dismiss_key = file_key
             st.session_state.uploader_key += 1
             st.session_state.show_upload_dialog = False
@@ -65,7 +78,7 @@ def render_toolbar_row():
     """
     Render KPI/actions columns and toolbar buttons.
 
-    Returns (kpi_col, uploaded_file, refresh_clicked).
+    Returns (kpi_col, refresh_clicked).
     """
     kpi_col, actions_col = st.columns([6.2, 1.3], vertical_alignment="center")
     refresh_clicked = False
@@ -82,18 +95,17 @@ def render_toolbar_row():
                 st.session_state.show_upload_dialog = True
                 st.rerun()
         with btn_reset:
-            show_reset = (
-                st.session_state.get("uploaded_portfolio_df") is not None
-                or get_cli_filename() is not None
-            )
-            if show_reset and st.button(
+            if st.button(
                 "❌",
-                help="Clear upload & use default portfolio",
+                help="Reload portfolio from database (discard unsaved editor changes)",
                 use_container_width=True,
             ):
                 st.session_state.uploader_key += 1
                 st.session_state.show_upload_dialog = False
+                active = load_active_portfolio()
+                clear_holdings_draft(active.portfolio_id)
                 clear_session_keys(PORTFOLIO_RESET_KEYS)
+                invalidate_analysis(refetch_metadata=False)
                 clear_portfolio_table_widget()
                 st.rerun()
         with btn_refresh:
@@ -106,4 +118,4 @@ def render_toolbar_row():
     if st.session_state.get("show_upload_dialog"):
         upload_portfolio_dialog()
 
-    return kpi_col, None, refresh_clicked
+    return kpi_col, refresh_clicked

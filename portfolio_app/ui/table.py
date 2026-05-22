@@ -166,7 +166,7 @@ def render_portfolio_table(summary_df, view_name, table_key="portfolio_table"):
 
 
 def render_portfolio_table_section():
-    """Tabbed column views with one multi-select table on the active tab only."""
+    """Column views via segmented control — one table widget avoids ghost tabs on rerun."""
     summary_df = pd.DataFrame([x["data"] for x in st.session_state.all_results])
     if reconcile_table_selection_before_render(summary_df):
         return
@@ -175,17 +175,18 @@ def render_portfolio_table_section():
     if default_view not in view_options:
         default_view = view_options[0]
 
-    tab_widgets = st.tabs(
+    if "portfolio_table_view" not in st.session_state:
+        st.session_state.portfolio_table_view = default_view
+
+    view_name = st.radio(
+        "View",
         view_options,
+        horizontal=True,
         key="portfolio_table_view",
-        default=default_view,
-        on_change="rerun",
+        label_visibility="collapsed",
     )
 
-    for view_name, tab in zip(view_options, tab_widgets):
-        if tab.open:
-            with tab:
-                render_portfolio_table(summary_df, view_name, table_key="portfolio_table")
+    render_portfolio_table(summary_df, view_name, table_key="portfolio_table")
 
     selected_symbols = st.session_state.get("selected_symbols") or []
     focus = st.session_state.get("selected_symbol")

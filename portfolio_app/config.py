@@ -1,0 +1,57 @@
+"""Paths, history periods, and table column configuration."""
+import os
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+LOGO_PATH = os.path.join(APP_DIR, "static", "myPeroLogo.png")
+if not os.path.exists(LOGO_PATH):
+    LOGO_PATH = os.path.join(APP_DIR, "myPeroLogo.png")
+
+PAGE_ICON = (
+    os.path.join("static", "myPeroLogo.png")
+    if os.path.exists(os.path.join(APP_DIR, "static", "myPeroLogo.png"))
+    else "myPeroLogo.png"
+)
+
+BULL_TREND_PATH = os.path.join(APP_DIR, "bull-trend.png")
+BEAR_TREND_PATH = os.path.join(APP_DIR, "bear-trend.png")
+PORTFOLIO_FILE_CANDIDATES = ("myPortfolio.csv", "Sample-Portfolio.csv")
+CHART_HEIGHT = 340
+
+TABLE_HISTORY_PERIOD = "2y"
+DETAIL_HISTORY_PERIOD = "2y"
+METADATA_BATCH_SIZE = 2
+METADATA_POLL_SECONDS = 1.5
+ANALYST_LOADED_NOTICE_SEC = 3
+
+METADATA_COLS = {"Div Yield", "Est Target", "Upside %"}
+# Analyst-dependent; keep NaN as "-" until metadata loads (still use signed gradient)
+METADATA_LATE_COLS = {"∆ Act-Est Target %"}
+
+TABLE_VIEW_COLUMNS = {
+    "Standard": [
+        "Symbol", "🌐 Price", "Change %", "Div Yield", "Est Target", "Upside %",
+    ],
+    "Trends": [
+        "Symbol", "🌐 Price", "Change %", "5D", "1M", "6M", "12M",
+    ],
+    "ROI": [
+        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
+        "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "∆ Act-Target %", "Est Target",
+        "∆ Act-Est Target %",
+    ],
+}
+
+TABLE_PERCENT_COLS = [
+    "📈 Total %", "Change %", "Upside %", "Ø CAGR", "Target %", "∆ Act-Target %",
+    "∆ Act-Est Target %",
+    "5D", "1M", "6M", "12M",
+]
+TABLE_CURRENCY_COLS = [
+    "📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price",
+]
+TABLE_PNL_COLS = ["Total $"]
+TABLE_GRADIENT_EXCLUDE = {"Div Yield"}
+
+_COLOR_POSITIVE = (19, 115, 51)
+_COLOR_NEGATIVE = (197, 34, 31)

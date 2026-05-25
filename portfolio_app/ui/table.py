@@ -200,39 +200,41 @@ def format_display_numerics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_portfolio_table_column_config(columns, *, editable: bool = False):
-    """Column config; Symbol pinned. Consistent $ / % formats on all numeric columns."""
+    """
+    Column config; Symbol pinned. Consistent $ / % formats on numeric columns.
+
+    For st.dataframe (read-only), omit disabled= so every column can be sorted.
+    For st.data_editor, disabled= locks non-editable columns (and blocks their sort).
+    """
     config = {}
     if "Symbol" in columns:
-        config["Symbol"] = st.column_config.TextColumn(
-            "Symbol",
-            pinned=True,
-            width="small",
-            disabled=not editable,
-        )
+        sym_kw: dict = {"pinned": True, "width": "small"}
+        if editable:
+            sym_kw["disabled"] = "Symbol" not in ROI_EDITABLE_COLUMNS
+        config["Symbol"] = st.column_config.TextColumn("Symbol", **sym_kw)
     if "PurchaseDate" in columns:
-        config["PurchaseDate"] = st.column_config.DateColumn(
-            "Purchase date",
-            disabled=not editable or "PurchaseDate" not in ROI_EDITABLE_COLUMNS,
-        )
+        pd_kw: dict = {}
+        if editable:
+            pd_kw["disabled"] = "PurchaseDate" not in ROI_EDITABLE_COLUMNS
+        config["PurchaseDate"] = st.column_config.DateColumn("Purchase date", **pd_kw)
     if "Currency" in columns:
-        config["Currency"] = st.column_config.SelectboxColumn(
-            "Currency",
-            options=["USD", "EUR"],
-            required=True,
-            disabled=not editable or "Currency" not in ROI_EDITABLE_COLUMNS,
-        )
+        cur_kw: dict = {"options": ["USD", "EUR"], "required": True}
+        if editable:
+            cur_kw["disabled"] = "Currency" not in ROI_EDITABLE_COLUMNS
+        config["Currency"] = st.column_config.SelectboxColumn("Currency", **cur_kw)
 
     editable_numeric = set(ROI_EDITABLE_COLUMNS) if editable else set()
     for col, fmt in TABLE_NUMBER_COLUMN_FORMAT.items():
         if col not in columns:
             continue
-        kwargs = {
+        kwargs: dict = {
             "label": _column_display_name(col),
             "format": fmt,
-            "disabled": col not in editable_numeric,
         }
-        if col in editable_numeric:
-            kwargs["min_value"] = 0
+        if editable:
+            kwargs["disabled"] = col not in editable_numeric
+            if col in editable_numeric:
+                kwargs["min_value"] = 0
         config[col] = st.column_config.NumberColumn(**kwargs)
 
     return config
@@ -470,7 +472,7 @@ def render_portfolio_table_roi(summary_df, holdings_df) -> pd.DataFrame:
     display_df = _build_roi_display_df(summary_df, holdings_df)
     _render_roi_dataframe(display_df)
     if is_portfolio_more_open():
-        with st.expander("Edit portfolio rows", expanded=True):
+        with st.expander("Edit portfolio rows", expanded=False):
             return _render_roi_data_editor(display_df)
     return display_df
 

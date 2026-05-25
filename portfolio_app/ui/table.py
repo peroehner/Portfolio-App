@@ -464,12 +464,14 @@ def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
 
 def render_portfolio_table_roi(summary_df, holdings_df) -> pd.DataFrame:
     """
-    ROI view: sortable dataframe by default; inline editor when ⋮ menu is open.
+    ROI view: always show a sortable dataframe (like Standard/Trends).
+    When ⋮ is open, an edit table appears below for inline holdings changes.
     """
     display_df = _build_roi_display_df(summary_df, holdings_df)
-    if is_portfolio_more_open():
-        return _render_roi_data_editor(display_df)
     _render_roi_dataframe(display_df)
+    if is_portfolio_more_open():
+        with st.expander("Edit portfolio rows", expanded=True):
+            return _render_roi_data_editor(display_df)
     return display_df
 
 

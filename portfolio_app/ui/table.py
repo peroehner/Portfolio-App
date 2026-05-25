@@ -377,16 +377,67 @@ def render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_
     )
 
 
-def render_portfolio_table_roi_editable(summary_df, holdings_df):
-    """ROI view: edit user columns inline; chart focus comes from Standard/Trends row selection."""
+def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:
+    """Prepare ROI table data (analysis rows merged with holdings draft)."""
     view_name = "ROI"
-    cols = _view_columns(view_name, summary_df)
-    base_cols = [c for c in cols if c in summary_df.columns]
-    display_df = enrich_summary_with_currency(summary_df[base_cols], holdings_df)
+    if summary_df is not None and not summary_df.empty:
+        cols = _view_columns(view_name, summary_df)
+        base_cols = [c for c in cols if c in summary_df.columns]
+        display_df = enrich_summary_with_currency(summary_df[base_cols], holdings_df)
+    else:
+        display_df = holdings_to_roi_display_df(holdings_df)
+        cols = _view_columns(view_name, display_df)
     display_df = display_df[[c for c in cols if c in display_df.columns]]
     display_df = prepare_roi_editor_df(display_df)
     display_df = merge_holdings_into_roi_display(display_df, holdings_df)
-    display_df = format_display_numerics(display_df)
+    return format_display_numerics(display_df)
+
+
+def _style_roi_dataframe(display_df: pd.DataFrame):
+    """Same gradients/formatting as Standard/Trends for the sortable ROI view."""
+    cols = list(display_df.columns)
+    format_dict = get_table_format_dict(cols)
+    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
+
+    skip_fillna = METADATA_COLS | METADATA_LATE_COLS
+    fill_cols = [
+        c
+        for c in TABLE_PERCENT_COLS + ["Div Yield"]
+        if c in display_df.columns and c not in skip_fillna
+    ]
+    out = display_df.copy()
+    if fill_cols:
+        out[fill_cols] = out[fill_cols].fillna(0)
+
+    gradient_cols = [
+        c
+        for c in TABLE_PERCENT_COLS
+        if c in out.columns
+        and c in actual_format_dict
+        and c not in TABLE_GRADIENT_EXCLUDE
+    ] + [c for c in TABLE_PNL_COLS if c in out.columns]
+    styled = out.style.format(actual_format_dict, na_rep="-").set_properties(
+        **{"background-color": "white", "color": "black"}
+    )
+    if gradient_cols:
+        styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
+    return styled
+
+
+def _render_roi_dataframe(display_df: pd.DataFrame):
+    """Sortable ROI table (st.dataframe — same header sort as Standard/Trends)."""
+    cols = list(display_df.columns)
+    st.dataframe(
+        _style_roi_dataframe(display_df),
+        use_container_width=True,
+        hide_index=True,
+        column_config=get_portfolio_table_column_config(cols, editable=False),
+        key="portfolio_table_roi_view",
+    )
+
+
+def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
+    """Editable ROI table when ⋮ menu is open (st.data_editor — limited column sort)."""
     disabled = [c for c in display_df.columns if c not in ROI_EDITABLE_COLUMNS]
 
     st.markdown('<div class="roi-table-anchor"></div>', unsafe_allow_html=True)
@@ -409,6 +460,17 @@ def render_portfolio_table_roi_editable(summary_df, holdings_df):
             st.warning(msg)
 
     return edited
+
+
+def render_portfolio_table_roi(summary_df, holdings_df) -> pd.DataFrame:
+    """
+    ROI view: sortable dataframe by default; inline editor when ⋮ menu is open.
+    """
+    display_df = _build_roi_display_df(summary_df, holdings_df)
+    if is_portfolio_more_open():
+        return _render_roi_data_editor(display_df)
+    _render_roi_dataframe(display_df)
+    return display_df
 
 
 def render_portfolio_table_section():
@@ -455,10 +517,9 @@ def render_portfolio_table_section():
             edited = holdings_df
         elif summary_df.empty:
             st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
-            display_df = holdings_to_roi_display_df(holdings_df)
-            edited = render_portfolio_table_roi_editable(display_df, holdings_df)
+            edited = render_portfolio_table_roi(summary_df, holdings_df)
         else:
-            edited = render_portfolio_table_roi_editable(summary_df, holdings_df)
+            edited = render_portfolio_table_roi(summary_df, holdings_df)
         if save_clicked:
             roi_errors = validate_roi_editor_df(edited)
             if roi_errors:

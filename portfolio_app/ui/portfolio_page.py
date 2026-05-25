@@ -1,6 +1,4 @@
 """Portfolio load, KPI strip, table, and refresh handling."""
-import html
-
 import streamlit as st
 
 from portfolio_app.analysis.portfolio_build import (
@@ -17,7 +15,6 @@ from portfolio_app.data.market_data import (
 )
 from portfolio_app.data.metadata import (
     metadata_map_from_results,
-    portfolio_metadata_progress,
     start_metadata_background_load,
     start_metadata_for_new_symbols,
 )
@@ -33,28 +30,26 @@ from portfolio_app.session_keys import (
     clear_portfolio_table_widget,
     clear_session_keys,
 )
-from portfolio_app.ui.holdings_editor import render_holdings_editor
 from portfolio_app.ui.table import render_portfolio_table_section
 
 
-def render_kpi_strip(kpi_col, df_port, portfolio_name):
-    safe_filename = html.escape(str(portfolio_name))
-    with kpi_col:
-        st.markdown(
-            f'<div class="kpi-strip">'
-            f'<span class="kpi-item kpi-file" title="{safe_filename}">'
-            f'<b>File</b> <span class="kpi-val">{safe_filename}</span></span>'
-            f'<span class="kpi-item"><b>Symbols</b> <span class="kpi-val">{len(df_port):,}</span></span>'
-            f'<span class="kpi-item"><b>Value</b> <span class="kpi-val">${st.session_state.total_depot_value:,.0f}</span></span>'
-            f'<span class="kpi-item"><b>Cost</b> <span class="kpi-val">${st.session_state.total_depot_cost:,.0f}</span></span>'
-            f'<span class="kpi-item"><b>Target</b> <span class="kpi-val">${st.session_state.total_depot_target:,.0f}</span></span>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+def _clear_analysis_session():
+    st.session_state.all_results = []
+    st.session_state.total_depot_value = 0.0
+    st.session_state.total_depot_cost = 0.0
+    st.session_state.total_depot_target = 0.0
+    st.session_state.portfolio_symbols = tuple()
+    st.session_state.ticker_liste = []
+    st.session_state.selected_symbols = []
+    st.session_state.table_sel_rows = []
 
 
 def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
     """Fetch prices and build session results when portfolio holdings change."""
+    if df_port is None or df_port.empty:
+        _clear_analysis_session()
+        return
+
     unique_symbols = tuple(sorted(df_port["Symbol"].unique().tolist()))
     prior_symbols = set(st.session_state.get("portfolio_symbols", ()))
     needs_eur = (df_port["Currency"] == "EUR").any()
@@ -107,28 +102,44 @@ def handle_refresh(refresh_clicked):
     st.rerun()
 
 
-def _analysis_key(portfolio_name: str) -> str:
+def _analysis_key(portfolio_id: int, portfolio_name: str) -> str:
+    return f"{portfolio_id}:{get_portfolio_data_version()}:{portfolio_name}"
+
+
+def _holdings_symbol_set(df_port) -> frozenset:
+    if df_port is None or df_port.empty:
+        return frozenset()
+    return frozenset(df_port["Symbol"].astype(str).str.upper().tolist())
+
+
+def _needs_analysis_reload(df_port, portfolio_id: int, portfolio_name: str) -> bool:
+    if get_analysis_portfolio_key() != _analysis_key(portfolio_id, portfolio_name):
+        return True
+    loaded = frozenset(st.session_state.get("portfolio_symbols", ()))
+    return _holdings_symbol_set(df_port) != loaded
+
+
+def render_portfolio_page(df_port, portfolio_name, refresh_clicked):
+    """Load portfolio data and show analysis table (portfolio bar is in toolbar row)."""
     active = load_active_portfolio()
-    return f"{active.portfolio_id}:{get_portfolio_data_version()}:{portfolio_name}"
-
-
-def render_portfolio_page(kpi_col, df_port, portfolio_name, refresh_clicked):
-    """Load portfolio data, show KPIs, holdings editor, analysis table."""
-    analysis_key = _analysis_key(portfolio_name)
-    if get_analysis_portfolio_key() != analysis_key:
+    if _needs_analysis_reload(df_port, active.portfolio_id, portfolio_name):
         st.session_state.current_loaded_name = portfolio_name
-        set_analysis_portfolio_key(analysis_key)
+        set_analysis_portfolio_key(_analysis_key(active.portfolio_id, portfolio_name))
         refetch_metadata = consume_refetch_metadata_flag()
         load_portfolio_into_session(df_port, refetch_metadata=refetch_metadata)
 
-    render_kpi_strip(kpi_col, df_port, portfolio_name)
     handle_refresh(refresh_clicked)
 
-    if "all_results" in st.session_state and len(st.session_state.all_results) > 0:
-        st.subheader("Analysis")
-        render_portfolio_table_section()
-        portfolio_metadata_progress()
+    holding_count = len(df_port) if df_port is not None and not df_port.empty else 0
+    result_count = len(st.session_state.get("all_results") or [])
+    if holding_count > 0 and result_count == 0:
+        st.caption("Holdings loaded — market data pending.")
 
-    render_holdings_editor()
+    if df_port is None or df_port.empty:
+        st.info(
+            "No symbols yet — tap **⋮** for **Add symbol**, **Save portfolio**, or **📁** CSV import."
+        )
+
+    render_portfolio_table_section()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)

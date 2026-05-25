@@ -1,14 +1,16 @@
-"""App header with logo and title."""
+"""App header with logo, title, and account."""
 import os
 
 import streamlit as st
 
 from portfolio_app.config import LOGO_PATH
+from portfolio_app.ui.user_sidebar import render_account_in_header
 
 
 def render_header():
-    header_logo_col, header_title_col = st.columns(
-        [0.4, 5.6], vertical_alignment="center"
+    st.markdown('<div class="app-header-row"></div>', unsafe_allow_html=True)
+    header_logo_col, header_title_col, header_account_col = st.columns(
+        [0.42, 4.55, 1.53], vertical_alignment="center"
     )
     with header_logo_col:
         if os.path.exists(LOGO_PATH):
@@ -21,3 +23,6 @@ def render_header():
             '<span class="app-muted">· Trend Analyzer</span></p>',
             unsafe_allow_html=True,
         )
+    with header_account_col:
+        st.markdown('<p class="header-account-label">Account</p>', unsafe_allow_html=True)
+        render_account_in_header()

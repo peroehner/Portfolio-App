@@ -37,7 +37,7 @@ TABLE_VIEW_COLUMNS = {
         "Symbol", "🌐 Price", "Change %", "5D", "1M", "6M", "12M",
     ],
     "ROI": [
-        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
+        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share", "Currency",
         "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "∆ Act-Target %", "Est Target",
         "∆ Act-Est Target %",
     ],
@@ -53,6 +53,29 @@ TABLE_CURRENCY_COLS = [
 ]
 TABLE_PNL_COLS = ["Total $"]
 TABLE_GRADIENT_EXCLUDE = {"Div Yield"}
+
+# Streamlit NumberColumn printf formats (US: $ prefix, % suffix, dot decimals)
+TABLE_NUMBER_COLUMN_FORMAT = {
+    "🌐 Price": "$%.2f",
+    "Shares": "%.2f",
+    "Cost/Share": "$%.2f",
+    "📈 Target": "$%.2f",
+    "Target $": "$%.2f",
+    "Total $": "$%.2f",
+    "Est Target": "$%.2f",
+    "📈 Total %": "%.2f%%",
+    "Change %": "%.2f%%",
+    "Upside %": "%.2f%%",
+    "Ø CAGR": "%.2f%%",
+    "Target %": "%.2f%%",
+    "∆ Act-Target %": "%.2f%%",
+    "∆ Act-Est Target %": "%.2f%%",
+    "Div Yield": "%.1f%%",
+    "5D": "%.2f%%",
+    "1M": "%.2f%%",
+    "6M": "%.2f%%",
+    "12M": "%.2f%%",
+}
 
 _COLOR_POSITIVE = (19, 115, 51)
 _COLOR_NEGATIVE = (197, 34, 31)

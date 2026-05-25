@@ -45,7 +45,7 @@ USER_EDITABLE_COLUMNS = (
 )
 
 SOURCE_LEGEND = {
-    ColumnSource.USER: "Your data (editable in Holdings)",
+    ColumnSource.USER: "Your data (editable in ROI view)",
     ColumnSource.MARKET: "Live market data (yfinance)",
     ColumnSource.ANALYST: "Analyst estimates (yfinance)",
     ColumnSource.CALCULATED: "Computed from your inputs + market data",

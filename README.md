@@ -17,12 +17,14 @@ streamlit run app.py -- -f myPortfolio.csv
 
 ## Persistence (Phase 1)
 
-Holdings are stored in **SQLite** at `data/pero.db` (gitignored). On first run, the app seeds from `myPortfolio.csv` / `Sample-Portfolio.csv` or the demo mock.
+Holdings are stored in **SQLite** at `data/pero.db` (gitignored). Each user can have **multiple named portfolios**.
 
-- **Sidebar → Email** — identifies your local user (no password yet).
-- **Holdings** — edit `Symbol`, `Shares`, `AvgCost`, `PurchaseDate`, `TargetPrice`, `Currency`, then **Save holdings**.
-- **Upload CSV** — replaces positions in the active portfolio and renames it to the file name.
-- **Analysis tabs** (Standard / Trends / ROI) stay read-only; they refresh after save or upload.
+- **Header → Account** — email identifies your local user (no password yet).
+- **Startup** — opens your **last used** portfolio; if you have none, a one-time **Demo Portfolio** (mock data) is created.
+- **Portfolio bar** — switch portfolios, **rename**, **New** (empty), or **↺** reload from database.
+- **📁 CSV import** — choose a **portfolio name** (defaults to the file name). If that name already exists, you must confirm **replace** (holdings are overwritten).
+- **Build manually** — **New** → **ROI** view → **Add symbol** → edit cells → **Save portfolio**.
+- **ROI view** — edit user columns; Standard/Trends are read-only for analysis.
 
 ## Project layout
 
@@ -57,10 +59,10 @@ portfolio_app/
     header.py             # Logo and title
     user_sidebar.py       # Email identity
     toolbar.py            # Upload dialog, reset, refresh
-    holdings_editor.py    # Editable holdings (st.data_editor)
-    portfolio_page.py     # KPI strip, holdings, analysis table
+    holdings.py           # Holdings draft/save helpers
+    table.py              # Analysis views; ROI inline edit, add symbol, row select
+    portfolio_page.py     # KPI strip, analysis table
     detail_panel.py       # Chart, Fib window, export sidebar
-    table.py              # Tabbed views and row selection
     table_style.py        # Green/red cell gradients
     charts.py             # Plotly price + trend overlay
     export.py             # Multi-symbol Gemini export text

@@ -1,11 +1,21 @@
 """Portfolio CSV loading: upload, CLI, defaults, and demo mock."""
 import os
+import re
 import sys
 
 import pandas as pd
 import streamlit as st
 
 from portfolio_app.config import APP_DIR, PORTFOLIO_FILE_CANDIDATES
+
+PORTFOLIO_CSV_COLUMNS = (
+    "Symbol",
+    "Shares",
+    "AvgCost",
+    "PurchaseDate",
+    "TargetPrice",
+    "Currency",
+)
 
 
 def get_cli_filename():
@@ -48,6 +58,33 @@ def get_mock_portfolio_df():
         {"Symbol": "MELI", "Name": "MercadoLibre", "Shares": 30, "PurchaseDate": "2023-11-01", "AvgCost": 1500.0, "TargetPrice": 2200.0, "Currency": "USD"},
     ])
     return _parse_portfolio_df(df)
+
+
+def portfolio_export_filename(portfolio_name: str) -> str:
+    """Map portfolio name to download filename, e.g. HighGrowth → HighGrowth.csv."""
+    stem = (portfolio_name or "portfolio").strip()
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", stem).strip(" .")
+    if not stem:
+        stem = "portfolio"
+    if stem.lower().endswith(".csv"):
+        return stem
+    return f"{stem}.csv"
+
+
+def holdings_to_export_csv(df: pd.DataFrame | None) -> str:
+    """Semicolon-separated CSV matching the import format."""
+    if df is None or df.empty:
+        return ";".join(PORTFOLIO_CSV_COLUMNS) + "\n"
+
+    out = df.copy()
+    for col in PORTFOLIO_CSV_COLUMNS:
+        if col not in out.columns:
+            raise ValueError(f"Missing column: {col}")
+
+    out = out[list(PORTFOLIO_CSV_COLUMNS)]
+    dates = pd.to_datetime(out["PurchaseDate"], errors="coerce")
+    out["PurchaseDate"] = dates.dt.strftime("%Y-%m-%d").where(dates.notna(), "")
+    return out.to_csv(sep=";", index=False)
 
 
 def _read_uploaded_portfolio(uploaded_file):

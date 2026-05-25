@@ -1,13 +1,22 @@
 """Price returns and dividend yield helpers."""
+import math
+from datetime import datetime
+
 import pandas as pd
 
 from portfolio_app.config import METADATA_COLS  # noqa: F401 — re-export for callers
 
+MIN_DAYS_FOR_CAGR = 30
+MAX_CAGR_MAGNITUDE = 9_999.99
+
 __all__ = [
     "METADATA_COLS",
+    "MIN_DAYS_FOR_CAGR",
+    "compute_position_cagr",
     "compute_trend_returns",
     "daily_change_pct",
     "extract_dividend_yield",
+    "holding_days_since_purchase",
     "normalize_dividend_yield",
     "period_return",
 ]
@@ -57,6 +66,51 @@ def compute_trend_returns(price, close_series):
         "6M": period_return(close_series, price, 126),
         "12M": period_return(close_series, price, 252),
     }
+
+
+def holding_days_since_purchase(purchase_date, *, now=None) -> int | None:
+    """Calendar days since purchase; None if unknown or purchase date is in the future."""
+    if purchase_date is None or (isinstance(purchase_date, float) and pd.isna(purchase_date)):
+        return None
+    try:
+        purchased = pd.to_datetime(purchase_date).to_pydatetime().replace(tzinfo=None)
+    except Exception:
+        return None
+    if now is None:
+        now = datetime.now()
+    days = (now - purchased).days
+    if days < 0:
+        return None
+    return days
+
+
+def compute_position_cagr(
+    current_val: float,
+    current_cost: float,
+    days_held: int | None,
+) -> float | None:
+    """
+    Annualized return (CAGR) from cost basis to current value.
+    Returns None when the holding period is too short or inputs are invalid
+    (avoids absurd values from near-zero years_held).
+    """
+    if not current_cost or current_cost <= 0 or current_val is None:
+        return None
+    if days_held is None or days_held < MIN_DAYS_FOR_CAGR:
+        return None
+
+    years_held = days_held / 365.25
+    ratio = current_val / current_cost
+    if ratio <= 0:
+        return None
+
+    try:
+        cagr = (ratio ** (1 / years_held) - 1) * 100
+    except (OverflowError, ValueError):
+        return None
+    if not math.isfinite(cagr) or abs(cagr) > MAX_CAGR_MAGNITUDE:
+        return None
+    return round(cagr, 2)
 
 
 def daily_change_pct(close_series):

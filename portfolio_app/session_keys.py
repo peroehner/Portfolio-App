@@ -2,7 +2,6 @@
 
 PORTFOLIO_RESET_KEYS = (
     "all_results",
-    "holdings_expanded",
     "show_upload_dialog",
     "upload_dismiss_key",
     "metadata_enriched",

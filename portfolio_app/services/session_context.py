@@ -62,6 +62,16 @@ def consume_refetch_metadata_flag() -> bool:
     return st.session_state.pop("_pending_refetch_metadata", True)
 
 
+def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True):
+    """Switch session to a portfolio and invalidate analysis."""
+    set_active_portfolio_id(active.portfolio_id)
+    get_portfolio_service().remember_last_portfolio(active.user_id, active.portfolio_id)
+    st.session_state.pop(f"holdings_draft_{active.portfolio_id}", None)
+    st.session_state.pop("portfolio_table", None)
+    st.session_state.pop("portfolio_table_roi_editor", None)
+    invalidate_analysis(refetch_metadata=refetch_metadata)
+
+
 def load_active_portfolio() -> ActivePortfolio:
     svc = get_portfolio_service()
     user = get_session_user()
@@ -70,7 +80,6 @@ def load_active_portfolio() -> ActivePortfolio:
         active = svc.load_portfolio(user.id, portfolio_id)
         if active:
             return active
-    active = svc.ensure_default_portfolio(user)
+    active = svc.bootstrap_user_portfolio(user)
     set_active_portfolio_id(active.portfolio_id)
-    svc.remember_last_portfolio(user.id, active.portfolio_id)
     return active

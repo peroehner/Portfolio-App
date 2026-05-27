@@ -32,20 +32,96 @@ class PortfolioRepository:
     def __init__(self):
         init_database()
 
+    @staticmethod
+    def _display_name_from_email(email: str) -> str:
+        prefix = (email or "").split("@")[0].strip()
+        return prefix or "User"
+
+    @staticmethod
+    def _user_from_row(row) -> User:
+        return User(
+            id=row["id"],
+            email=row["email"],
+            last_portfolio_id=row["last_portfolio_id"],
+            display_name=row["display_name"],
+            status=row["status"] or "active",
+            created_at=_parse_dt(row["created_at"]),
+            last_login_at=_parse_dt(row["last_login_at"]),
+        )
+
     def get_or_create_user(self, email: str) -> User:
         email = email.strip().lower()
+        if not email:
+            raise ValueError("Email is required.")
+        display_name = self._display_name_from_email(email)
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT id, email, last_portfolio_id FROM users WHERE email = ?",
+                """
+                SELECT id, email, display_name, status, last_portfolio_id, created_at, last_login_at
+                FROM users
+                WHERE email = ?
+                """,
                 (email,),
             ).fetchone()
             if row:
-                return User(id=row["id"], email=row["email"], last_portfolio_id=row["last_portfolio_id"])
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET last_login_at = datetime('now'),
+                        display_name = COALESCE(NULLIF(display_name, ''), ?),
+                        status = COALESCE(NULLIF(status, ''), 'active')
+                    WHERE id = ?
+                    """,
+                    (display_name, row["id"]),
+                )
+                row = conn.execute(
+                    """
+                    SELECT id, email, display_name, status, last_portfolio_id, created_at, last_login_at
+                    FROM users
+                    WHERE id = ?
+                    """,
+                    (row["id"],),
+                ).fetchone()
+                return self._user_from_row(row)
             cur = conn.execute(
-                "INSERT INTO users (email) VALUES (?)",
-                (email,),
+                "INSERT INTO users (email, display_name, status, last_login_at) VALUES (?, ?, 'active', datetime('now'))",
+                (email, display_name),
             )
-            return User(id=cur.lastrowid, email=email, last_portfolio_id=None)
+            row = conn.execute(
+                """
+                SELECT id, email, display_name, status, last_portfolio_id, created_at, last_login_at
+                FROM users
+                WHERE id = ?
+                """,
+                (cur.lastrowid,),
+            ).fetchone()
+            return self._user_from_row(row)
+
+    def list_users(self) -> List[User]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, email, display_name, status, last_portfolio_id, created_at, last_login_at
+                FROM users
+                WHERE COALESCE(status, 'active') = 'active'
+                ORDER BY email ASC
+                """
+            ).fetchall()
+        return [self._user_from_row(r) for r in rows]
+
+    def get_user(self, user_id: int) -> Optional[User]:
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, email, display_name, status, last_portfolio_id, created_at, last_login_at
+                FROM users
+                WHERE id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return self._user_from_row(row)
 
     def set_last_portfolio(self, user_id: int, portfolio_id: int):
         with get_connection() as conn:
@@ -154,9 +230,20 @@ class PortfolioRepository:
                 updated_at=datetime.now(),
             )
 
-    def delete_portfolio(self, portfolio_id: int):
+    def delete_portfolio(self, user_id: int, portfolio_id: int):
         with get_connection() as conn:
-            conn.execute("DELETE FROM portfolios WHERE id = ?", (portfolio_id,))
+            conn.execute(
+                """
+                UPDATE users
+                SET last_portfolio_id = NULL
+                WHERE id = ? AND last_portfolio_id = ?
+                """,
+                (user_id, portfolio_id),
+            )
+            conn.execute(
+                "DELETE FROM portfolios WHERE id = ? AND user_id = ?",
+                (portfolio_id, user_id),
+            )
 
     def list_positions(self, portfolio_id: int) -> List[Position]:
         with get_connection() as conn:

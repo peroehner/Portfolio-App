@@ -136,9 +136,9 @@ def render_toolbar_row():
     more_open = is_portfolio_more_open()
 
     if more_open:
-        col_sel, col_up, col_new, col_reload, col_kpis, col_upload, col_refresh, col_more = (
+        col_sel, col_up, col_new, col_rename, col_delete, col_reload, col_kpis, col_upload, col_refresh, col_more = (
             st.columns(
-                [1.75, 0.32, 0.32, 0.32, 4.55, 0.38, 0.38, 0.38],
+                [1.60, 0.28, 0.28, 0.28, 0.28, 0.28, 4.20, 0.34, 0.34, 0.34],
                 gap="small",
                 vertical_alignment="center",
             )
@@ -149,7 +149,7 @@ def render_toolbar_row():
             gap="small",
             vertical_alignment="center",
         )
-        col_up = col_new = col_reload = col_upload = None
+        col_up = col_new = col_rename = col_delete = col_reload = col_upload = None
 
     render_portfolio_controls(
         col_sel,
@@ -157,6 +157,8 @@ def render_toolbar_row():
         df_port,
         col_up=col_up,
         col_new=col_new,
+        col_rename=col_rename,
+        col_delete=col_delete,
         col_reload=col_reload,
     )
 

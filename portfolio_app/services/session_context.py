@@ -3,6 +3,11 @@ import streamlit as st
 
 from portfolio_app.domain.models import ActivePortfolio, User
 from portfolio_app.services.portfolio_service import PortfolioService
+from portfolio_app.session_keys import (
+    PORTFOLIO_RESET_KEYS,
+    clear_portfolio_table_widget,
+    clear_session_keys,
+)
 
 _DEFAULT_EMAIL = "user@local"
 
@@ -23,6 +28,35 @@ def set_session_email(email: str):
 
 def get_session_user() -> User:
     return get_portfolio_service().get_or_create_user(get_session_email())
+
+def list_session_users() -> list[User]:
+    return get_portfolio_service().list_users()
+
+
+def switch_session_user(email: str) -> bool:
+    """
+    Switch active session user and reset portfolio-scoped UI state.
+
+    Returns True only when a switch was performed.
+    """
+    normalized = email.strip().lower()
+    if not normalized or normalized == get_session_email():
+        return False
+
+    # Set identity first so downstream loads resolve the target user's data.
+    set_session_email(normalized)
+
+    # Clear user-bound active selection and table/widget state.
+    st.session_state.pop("active_portfolio_id", None)
+    st.session_state.pop("analysis_portfolio_key", None)
+    st.session_state.pop("portfolio_selector", None)
+    st.session_state.pop("portfolio_table_roi_editor", None)
+    st.session_state.pop("portfolio_more_open", None)
+    st.session_state.pop("show_upload_dialog", None)
+    clear_session_keys(PORTFOLIO_RESET_KEYS)
+    clear_portfolio_table_widget()
+    invalidate_analysis(refetch_metadata=True)
+    return True
 
 
 def get_active_portfolio_id() -> int | None:

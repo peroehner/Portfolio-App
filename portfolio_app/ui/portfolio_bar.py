@@ -74,6 +74,45 @@ def _new_portfolio_dialog():
             st.error(str(e))
 
 
+@st.dialog("Rename portfolio")
+def _rename_portfolio_dialog():
+    user = get_session_user()
+    svc = get_portfolio_service()
+    active = load_active_portfolio()
+    name = st.text_input("New portfolio name", value=active.name)
+    if st.button("Save name", type="primary", use_container_width=True):
+        if not name.strip():
+            st.warning("Enter a portfolio name.")
+            return
+        try:
+            renamed = svc.rename_portfolio(user.id, active.portfolio_id, name.strip())
+            activate_portfolio(renamed, refetch_metadata=False)
+            st.success("Portfolio renamed.")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+
+
+@st.dialog("Delete portfolio")
+def _delete_portfolio_dialog():
+    user = get_session_user()
+    svc = get_portfolio_service()
+    active = load_active_portfolio()
+    portfolios = svc.list_portfolios(user.id)
+    st.warning(
+        f'You are about to permanently delete **"{active.name}"** '
+        f"with {len(active.holdings_df)} position(s)."
+    )
+    if len(portfolios) <= 1:
+        st.info("You have one portfolio left. A Demo Portfolio will be created automatically.")
+    confirm = st.checkbox("I understand — delete this portfolio permanently")
+    if st.button("Delete portfolio", type="primary", use_container_width=True, disabled=not confirm):
+        next_active = svc.delete_portfolio(user.id, active.portfolio_id)
+        activate_portfolio(next_active, refetch_metadata=True)
+        st.success("Portfolio deleted.")
+        st.rerun()
+
+
 def render_portfolio_controls(
     col_sel,
     col_kpis,
@@ -81,6 +120,8 @@ def render_portfolio_controls(
     *,
     col_up=None,
     col_new=None,
+    col_rename=None,
+    col_delete=None,
     col_reload=None,
 ):
     """Render portfolio picker, optional action buttons, and KPI strip."""
@@ -135,6 +176,16 @@ def render_portfolio_controls(
         with col_new:
             if st.button("+", help="New empty portfolio", key="portfolio_new_btn"):
                 _new_portfolio_dialog()
+
+    if col_rename is not None:
+        with col_rename:
+            if st.button("✎", help="Rename active portfolio", key="portfolio_rename_btn"):
+                _rename_portfolio_dialog()
+
+    if col_delete is not None:
+        with col_delete:
+            if st.button("🗑", help="Delete active portfolio", key="portfolio_delete_btn"):
+                _delete_portfolio_dialog()
 
     if col_reload is not None:
         with col_reload:

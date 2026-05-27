@@ -11,6 +11,10 @@ class User:
     id: int
     email: str
     last_portfolio_id: Optional[int]
+    display_name: Optional[str] = None
+    status: str = "active"
+    created_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

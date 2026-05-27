@@ -17,6 +17,9 @@ class PortfolioService:
     def get_or_create_user(self, email: str) -> User:
         return self.repo.get_or_create_user(email)
 
+    def list_users(self) -> list[User]:
+        return self.repo.list_users()
+
     def remember_last_portfolio(self, user_id: int, portfolio_id: int):
         self.repo.set_last_portfolio(user_id, portfolio_id)
 
@@ -83,6 +86,18 @@ class PortfolioService:
         if not portfolio:
             raise ValueError("Portfolio not found.")
         return self._active_from_portfolio(portfolio)
+
+    def delete_portfolio(self, user_id: int, portfolio_id: int) -> ActivePortfolio:
+        """
+        Delete one portfolio and return the next active portfolio for that user.
+
+        Always leaves the user with at least one portfolio by bootstrapping when needed.
+        """
+        self.repo.delete_portfolio(user_id, portfolio_id)
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise ValueError("User not found.")
+        return self.bootstrap_user_portfolio(user)
 
     def save_holdings(self, portfolio_id: int, df: pd.DataFrame) -> ActivePortfolio:
         self.repo.replace_positions(portfolio_id, df)

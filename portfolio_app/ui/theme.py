@@ -206,7 +206,7 @@ APP_CSS = """
         display: inline-flex;
         align-items: center;
         gap: 0.2rem;
-        font-size: 0.76rem;
+        font-size: 0.86rem !important;
         line-height: 1.2;
         white-space: nowrap;
         max-width: 100%;
@@ -214,6 +214,25 @@ APP_CSS = """
         text-overflow: ellipsis;
         margin: 0;
         vertical-align: middle;
+    }
+    .tech-trend-slot,
+    .tech-trend-slot * {
+        font-size: 0.86rem !important;
+        line-height: 1.2 !important;
+    }
+    .tech-trend-slot.tech-trend-line {
+        font-size: 0.86rem !important;
+        line-height: 1.2 !important;
+    }
+    div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] .tech-trend-slot.tech-trend-line,
+    div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] .tech-trend-slot.tech-trend-line * {
+        font-size: 0.86rem !important;
+        line-height: 1.2 !important;
+    }
+    .tech-trend-slot b {
+        font-size: inherit;
+        font-weight: 600;
+        line-height: inherit;
     }
     .tech-trend-slot.tech-trend-empty {
         color: #6e7781;

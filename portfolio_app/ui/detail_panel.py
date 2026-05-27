@@ -74,7 +74,7 @@ def _main_trend_summary_html(main_trend, fib_trends) -> str:
     trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
     trend_icon = get_trend_icon_html(main_trend_type)
     return (
-        f'<span class="tech-trend-slot trend-line {trend_cls}">'
+        f'<span class="tech-trend-slot tech-trend-line {trend_cls}">'
         f"{trend_icon}<b>{main_trend_type}</b> · "
         f"{main_trend['f_start'].strftime('%Y-%m-%d')} → {main_trend['f_end'].strftime('%Y-%m-%d')} · "
         f"{main_trend['move_pct'] * 100:+.1f}% · {len(fib_trends)} trend(s)"

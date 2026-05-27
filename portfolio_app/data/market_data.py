@@ -1,14 +1,23 @@
 """Yahoo Finance price and FX data (cached)."""
 import time
 from typing import Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import streamlit as st
 import yfinance as yf
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from portfolio_app.analysis.returns import extract_dividend_yield
+from portfolio_app.analysis.returns import extract_dividend_yield, normalize_dividend_yield
 from portfolio_app.config import DETAIL_HISTORY_PERIOD, TABLE_HISTORY_PERIOD
+
+
+def _coerce_float(value, default=0.0) -> float:
+    try:
+        if value is None:
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -53,8 +62,61 @@ def get_ticker_ohlc_history(ticker_symbol, period=DETAIL_HISTORY_PERIOD):
         return pd.DataFrame()
 
 
+def _extract_target_from_targets(targets) -> float:
+    if targets is None or getattr(targets, "empty", True) or "current" not in targets.columns:
+        return 0.0
+    try:
+        if "mean" in targets.index:
+            return float(targets.loc["mean", "current"])
+        if "median" in targets.index:
+            return float(targets.loc["median", "current"])
+        if len(targets) > 0:
+            return float(targets["current"].iloc[0])
+    except Exception:
+        return 0.0
+    return 0.0
+
+
+def _fetch_ticker_metadata_primary(ticker_symbol):
+    """
+    Preferred metadata fetch path without `.info`.
+
+    Uses fast_info + analyst targets to avoid the fragile info endpoint
+    that often degrades on hosted deploy IP ranges.
+    """
+    est_target = 0.0
+    pct_change = 0.0
+    div_yield = 0.0
+
+    ticker = yf.Ticker(ticker_symbol)
+    try:
+        fi = ticker.fast_info or {}
+    except Exception:
+        fi = {}
+
+    # Daily change % from fast_info where available.
+    last_price = _coerce_float(fi.get("lastPrice", fi.get("last_price")), 0.0)
+    prev_close = _coerce_float(fi.get("previousClose", fi.get("previous_close")), 0.0)
+    if last_price > 0 and prev_close > 0:
+        pct_change = ((last_price / prev_close) - 1) * 100
+
+    # Dividend yield from fast_info fields when present.
+    fast_div = fi.get("dividendYield", fi.get("yearly_dividend_yield"))
+    if fast_div is not None:
+        div_yield = normalize_dividend_yield(fast_div)
+
+    # Analyst target estimate from dedicated endpoint.
+    try:
+        targets = ticker.get_analyst_price_targets()
+        est_target = _extract_target_from_targets(targets)
+    except Exception:
+        est_target = 0.0
+
+    return float(est_target), float(pct_change), float(div_yield)
+
+
 def _fetch_ticker_metadata_raw(ticker_symbol):
-    """Single Yahoo metadata request with fallbacks."""
+    """Legacy `.info` fallback for symbols missing primary metadata."""
     est_target = 0.0
     pct_change = 0.0
     div_yield = 0.0
@@ -90,21 +152,33 @@ def _fetch_ticker_metadata_raw(ticker_symbol):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_symbol_metadata(ticker_symbol):
-    """Cached metadata for one symbol (used on row/detail focus)."""
-    for attempt in range(2):
-        result = _fetch_ticker_metadata_raw(ticker_symbol)
-        if result[0] or result[2]:
-            return result
-        time.sleep(0.4 * (attempt + 1))
-    return result
+    """Cached metadata for one symbol; avoid `.info` as primary source."""
+    symbol = str(ticker_symbol).strip().upper()
+    est_target, pct_change, div_yield = _fetch_ticker_metadata_primary(symbol)
+
+    # Fill only missing fields from fallback (.info), keep primary pct_change.
+    if not est_target or not div_yield:
+        fallback = (0.0, 0.0, 0.0)
+        for attempt in range(2):
+            fallback = _fetch_ticker_metadata_raw(symbol)
+            if fallback[0] or fallback[2]:
+                break
+            time.sleep(0.4 * (attempt + 1))
+        if not est_target and fallback[0]:
+            est_target = fallback[0]
+        if not div_yield and fallback[2]:
+            div_yield = fallback[2]
+
+    return float(est_target or 0), float(pct_change or 0), float(div_yield or 0)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_portfolio_metadata_parallel(symbols_tuple):
-    """Fetch analyst metadata in parallel (optional bulk load)."""
+    """Fetch analyst metadata in parallel via the `.info`-free primary path."""
     symbols = list(symbols_tuple)
     if not symbols:
         return {}
+    symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
     workers = min(4, max(1, len(symbols)))
     results = {}
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -115,14 +189,22 @@ def fetch_portfolio_metadata_parallel(symbols_tuple):
                 results[symbol] = future.result()
             except Exception:
                 results[symbol] = (0.0, 0.0, 0.0)
-            time.sleep(0.15)
+            time.sleep(0.12)
     return results
 
 
 def _guess_currency(symbol: str) -> str:
+    symbol = str(symbol).strip().upper()
+    try:
+        fi = yf.Ticker(symbol).fast_info or {}
+        cur = str(fi.get("currency") or "").strip().upper()
+        if cur:
+            return "EUR" if cur == "EUR" else "USD"
+    except Exception:
+        pass
     try:
         info = yf.Ticker(symbol).info or {}
-        cur = str(info.get("currency") or "USD").strip().upper()
+        cur = str(info.get("currency") or "").strip().upper()
         return "EUR" if cur == "EUR" else "USD"
     except Exception:
         return "USD"

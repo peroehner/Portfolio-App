@@ -216,6 +216,7 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
         pd_kw: dict = {}
         if editable:
             pd_kw["disabled"] = "PurchaseDate" not in ROI_EDITABLE_COLUMNS
+        pd_kw["format"] = "YYYY-MM-DD"
         config["PurchaseDate"] = st.column_config.DateColumn("Purchase date", **pd_kw)
     if "Currency" in columns:
         cur_kw: dict = {"options": ["USD", "EUR"], "required": True}
@@ -426,15 +427,20 @@ def _style_roi_dataframe(display_df: pd.DataFrame):
     return styled
 
 
-def _render_roi_dataframe(display_df: pd.DataFrame):
-    """Sortable ROI table (st.dataframe — same header sort as Standard/Trends)."""
+def _render_roi_dataframe(display_df: pd.DataFrame, table_key: str = "portfolio_table"):
+    """Sortable ROI table (st.dataframe — same key/state model as Standard/Trends)."""
     cols = list(display_df.columns)
+    sel_rows = st.session_state.get("table_sel_rows", [])
+    selection_default = _selection_widget_state(sel_rows) if sel_rows else None
     st.dataframe(
         _style_roi_dataframe(display_df),
         use_container_width=True,
         hide_index=True,
         column_config=get_portfolio_table_column_config(cols, editable=False),
-        key="portfolio_table_roi_view",
+        on_select="rerun",
+        selection_mode="multi-row",
+        selection_default=selection_default,
+        key=table_key,
     )
 
 
@@ -464,13 +470,13 @@ def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
     return edited
 
 
-def render_portfolio_table_roi(summary_df, holdings_df) -> pd.DataFrame:
+def render_portfolio_table_roi(summary_df, holdings_df, table_key: str = "portfolio_table") -> pd.DataFrame:
     """
     ROI view: always show a sortable dataframe (like Standard/Trends).
     When ⋮ is open, an edit table appears below for inline holdings changes.
     """
     display_df = _build_roi_display_df(summary_df, holdings_df)
-    _render_roi_dataframe(display_df)
+    _render_roi_dataframe(display_df, table_key=table_key)
     if is_portfolio_more_open():
         with st.expander("Edit portfolio rows", expanded=False):
             return _render_roi_data_editor(display_df)
@@ -521,9 +527,9 @@ def render_portfolio_table_section():
             edited = holdings_df
         elif summary_df.empty:
             st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
-            edited = render_portfolio_table_roi(summary_df, holdings_df)
+            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
         else:
-            edited = render_portfolio_table_roi(summary_df, holdings_df)
+            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
         if save_clicked:
             roi_errors = validate_roi_editor_df(edited)
             if roi_errors:

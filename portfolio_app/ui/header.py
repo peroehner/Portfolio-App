@@ -10,7 +10,7 @@ from portfolio_app.ui.user_sidebar import render_account_in_header
 def render_header():
     st.markdown('<div class="app-header-row"></div>', unsafe_allow_html=True)
     header_logo_col, header_title_col, header_account_col = st.columns(
-        [0.42, 4.55, 1.53], vertical_alignment="center"
+        [0.42, 4.35, 1.73], vertical_alignment="center"
     )
     with header_logo_col:
         if os.path.exists(LOGO_PATH):
@@ -24,5 +24,9 @@ def render_header():
             unsafe_allow_html=True,
         )
     with header_account_col:
-        st.markdown('<p class="header-account-label">Account</p>', unsafe_allow_html=True)
-        render_account_in_header()
+        st.markdown('<div class="header-account-anchor"></div>', unsafe_allow_html=True)
+        ac_label, ac_sel = st.columns([0.52, 1.48], gap="medium", vertical_alignment="center")
+        with ac_label:
+            st.markdown('<p class="header-account-label">Account</p>', unsafe_allow_html=True)
+        with ac_sel:
+            render_account_in_header()

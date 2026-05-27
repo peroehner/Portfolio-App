@@ -10,6 +10,7 @@ from portfolio_app.services.session_context import (
     load_active_portfolio,
 )
 from portfolio_app.ui.holdings import clear_holdings_draft
+from portfolio_app.ui.components import mark_preserve_table_selection
 
 
 def _portfolio_options(portfolios) -> dict[str, int]:
@@ -162,34 +163,56 @@ def render_portfolio_controls(
         with col_up:
             export_disabled = df_port is None or df_port.empty
             st.download_button(
-                "↑",
+                "",
                 data=holdings_to_export_csv(df_port),
                 file_name=portfolio_export_filename(active.name),
                 mime="text/csv",
                 help="Export portfolio to CSV",
                 key="portfolio_export_btn",
+                icon=":material/download:",
                 disabled=export_disabled,
                 use_container_width=True,
+                on_click=mark_preserve_table_selection,
             )
 
     if col_new is not None:
         with col_new:
-            if st.button("+", help="New empty portfolio", key="portfolio_new_btn"):
+            if st.button(
+                "",
+                help="New empty portfolio",
+                key="portfolio_new_btn",
+                icon=":material/add_circle:",
+            ):
                 _new_portfolio_dialog()
 
     if col_rename is not None:
         with col_rename:
-            if st.button("✎", help="Rename active portfolio", key="portfolio_rename_btn"):
+            if st.button(
+                "",
+                help="Rename active portfolio",
+                key="portfolio_rename_btn",
+                icon=":material/edit:",
+            ):
                 _rename_portfolio_dialog()
 
     if col_delete is not None:
         with col_delete:
-            if st.button("🗑", help="Delete active portfolio", key="portfolio_delete_btn"):
+            if st.button(
+                "",
+                help="Delete active portfolio",
+                key="portfolio_delete_btn",
+                icon=":material/delete:",
+            ):
                 _delete_portfolio_dialog()
 
     if col_reload is not None:
         with col_reload:
-            if st.button("↺", help="Reload from database", key="portfolio_reload_btn"):
+            if st.button(
+                "",
+                help="Reload from database",
+                key="portfolio_reload_btn",
+                icon=":material/replay:",
+            ):
                 clear_holdings_draft(active.portfolio_id)
                 invalidate_analysis(refetch_metadata=False)
                 st.rerun()

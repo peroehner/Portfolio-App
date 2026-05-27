@@ -41,21 +41,52 @@ APP_CSS = """
         font-size: 0.7rem;
         font-weight: 600;
         color: #666;
-        margin: 0 0 0.1rem 0;
-        line-height: 1;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
+        margin: 0;
+        padding-right: 0.35rem;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
         text-align: right;
     }
     div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
         display: flex !important;
-        flex-direction: column !important;
-        align-items: flex-end !important;
-        justify-content: center !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        overflow: visible !important;
+    }
+    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.55rem !important;
+        width: 100% !important;
+        overflow: visible !important;
+    }
+    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 4.5rem !important;
+        max-width: none !important;
+        overflow: visible !important;
+    }
+    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        flex: 1 1 8.5rem !important;
+        min-width: 7.5rem !important;
+        max-width: 10.5rem !important;
+        margin-left: 0 !important;
+    }
+    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
+        min-height: 2rem !important;
+        height: 2rem !important;
     }
     div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child [data-testid="stTextInput"] {
         width: 100%;
-        max-width: 11rem;
+        max-width: 10.5rem;
     }
     div:has(> .header-account-label) [data-testid="stTextInput"] input {
         font-size: 0.85rem;
@@ -99,7 +130,11 @@ APP_CSS = """
         display: flex !important;
         align-items: center !important;
         justify-content: flex-start;
-        align-self: center !important;
+        align-self: stretch !important;
+        min-height: 2.1rem !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-strip-toolbar) {
+        align-items: stretch !important;
     }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"],
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
@@ -338,18 +373,25 @@ APP_CSS = """
         margin: 0 !important;
         white-space: nowrap;
     }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdownContainer"]:has(.kpi-strip-toolbar),
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdown"]:has(.kpi-strip-toolbar) {
         width: 100%;
         margin: 0 !important;
         padding: 0 !important;
-        display: flex;
-        align-items: center;
-        height: 2.1rem;
+        display: flex !important;
+        align-items: stretch !important;
+        min-height: 2.1rem !important;
+        height: 2.1rem !important;
     }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdown"]:has(.kpi-strip-toolbar) p {
-        margin: 0;
-        line-height: 1;
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1 !important;
         width: 100%;
+        display: flex !important;
+        align-items: stretch !important;
+        min-height: 2.1rem !important;
+        height: 100% !important;
     }
     .kpi-strip {
         display: flex;
@@ -363,26 +405,28 @@ APP_CSS = """
         padding: 0 0.75rem;
         background: #f6f8fa;
         border-radius: 6px;
-        border: 1px solid #e8ecf0;
+        border: 1px solid #d0d7de;
         box-sizing: border-box;
         width: 100%;
         overflow: hidden;
+        box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06);
     }
     .kpi-strip-toolbar {
         margin: 0;
-        height: 2.1rem;
-        min-height: 2.1rem;
-        max-height: 2.1rem;
+        height: 2.1rem !important;
+        min-height: 2.1rem !important;
+        max-height: 2.1rem !important;
+        flex: 1 1 auto;
     }
     .kpi-strip .kpi-item {
         display: inline-flex;
         flex: 1 1 0;
         min-width: 0;
-        align-items: baseline;
+        align-items: center;
         justify-content: center;
         gap: 0.3rem;
         white-space: nowrap;
-        line-height: 2.1rem;
+        line-height: 1.2;
     }
     .kpi-strip .kpi-item:first-child {
         justify-content: flex-start;

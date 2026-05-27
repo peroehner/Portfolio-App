@@ -62,6 +62,13 @@ def prime_click_modifiers():
     get_table_click_modifiers()
 
 
+def mark_preserve_table_selection() -> None:
+    """Keep portfolio table multi-select when a non-table widget triggers rerun."""
+    import streamlit as st
+
+    st.session_state["_preserve_table_selection"] = True
+
+
 def get_table_click_modifiers():
     """Return (shift_held, alt_held) latched from the last pointer down."""
     shift_qp = _qp_flag("_pero_shift")

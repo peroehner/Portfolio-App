@@ -10,6 +10,7 @@ from portfolio_app.data.metadata import enrich_symbol_metadata, prioritize_metad
 from portfolio_app.ui.charts import create_chart
 from portfolio_app.ui.components import get_trend_icon_html
 from portfolio_app.ui.export import build_multi_export_datasets
+from portfolio_app.ui.components import mark_preserve_table_selection
 
 
 def _sync_ticker_selection(ticker_liste):
@@ -216,14 +217,15 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
         label=export_label,
         data=export_data,
         file_name=(
-            f"gemini_analysis_{len(export_symbols)}_symbols_"
+            f"Analysis_{len(export_symbols)}_symbols_"
             f"{export_window_start}_{export_window_end}.txt"
             if export_ready
-            else "gemini_analysis.txt"
+            else "Analysis.txt"
         ),
         mime="text/plain",
         use_container_width=True,
         disabled=not export_ready,
+        on_click=mark_preserve_table_selection,
         help=(
             "Export technical datasets for all selected table rows "
             f"using the current From–To window ({export_window_start or '—'} → "

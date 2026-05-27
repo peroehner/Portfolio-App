@@ -138,7 +138,7 @@ def render_toolbar_row():
     if more_open:
         col_sel, col_up, col_new, col_rename, col_delete, col_reload, col_kpis, col_upload, col_refresh, col_more = (
             st.columns(
-                [1.60, 0.28, 0.28, 0.28, 0.28, 0.28, 4.20, 0.34, 0.34, 0.34],
+                [1.45, 0.34, 0.34, 0.34, 0.34, 0.34, 4.05, 0.36, 0.36, 0.36],
                 gap="small",
                 vertical_alignment="center",
             )
@@ -165,29 +165,33 @@ def render_toolbar_row():
     if col_upload is not None:
         with col_upload:
             if st.button(
-                "📁",
+                "",
                 help="Load portfolio from CSV file",
                 use_container_width=True,
                 key="open_upload_dialog_btn",
+                icon=":material/upload_file:",
             ):
                 st.session_state.show_upload_dialog = True
                 st.rerun()
 
     with col_refresh:
         refresh_clicked = st.button(
-            "🔄",
+            "",
             help="Refresh prices & analyst data",
             use_container_width=True,
             key="toolbar_refresh_btn",
+            icon=":material/sync:",
         )
 
     with col_more:
-        more_label = "⋮"
+        more_label = ""
         if st.button(
             more_label,
             help="Hide extra actions" if more_open else "More portfolio actions",
             use_container_width=True,
             key="portfolio_more_btn",
+            icon=":material/more_vert:",
+            type="primary" if more_open else "secondary",
         ):
             st.session_state.portfolio_more_open = not more_open
             st.rerun()

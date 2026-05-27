@@ -17,6 +17,9 @@ from portfolio_app.data.metadata import portfolio_metadata_progress, prioritize_
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
 from portfolio_app.ui.toolbar import is_portfolio_more_open
 from portfolio_app.ui.components import get_table_click_modifiers
+
+_PRESERVE_SELECTION_KEY = "_preserve_table_selection"
+_SKIP_SELECTION_APPLY_KEY = "_skip_table_selection_apply"
 from portfolio_app.ui.holdings import (
     ROI_EDITABLE_COLUMNS,
     append_symbol_to_draft,
@@ -68,6 +71,13 @@ def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_he
         if len(added) == 1:
             return sorted(set(prev_rows) | added)
         return new_rows
+
+    # Plain click: replace selection with the newly clicked row.
+    if not shift_held:
+        if len(added) == 1 and len(removed) == 1:
+            return [next(iter(added))]
+        if len(added) == 1 and prev_rows and len(new_rows) > 1:
+            return [next(iter(added))]
 
     if len(new_rows) == 1:
         return new_rows
@@ -132,21 +142,77 @@ def _selection_widget_state(rows: list[int]) -> dict:
     return {"selection": {"rows": list(rows)}}
 
 
-def reconcile_table_selection(
-    summary_df,
-    table_key: str = "portfolio_table",
-) -> bool:
-    """
-    Normalize selection before the dataframe widget mounts.
-    Returns True if a rerun was triggered to apply corrected selection.
-    """
+def _pending_selection_key(table_key: str) -> str:
+    return f"_{table_key}_pending_rows"
+
+
+def _apply_pending_widget_selection(summary_df, table_key: str) -> bool:
+    """Apply normalized rows to widget state before st.dataframe (Streamlit requirement)."""
+    pending_key = _pending_selection_key(table_key)
+    pending = st.session_state.pop(pending_key, None)
+    if pending is None:
+        return False
+    rows = sorted({int(r) for r in pending})
+    commit_selection_state(rows, summary_df)
+    st.session_state[table_key] = _selection_widget_state(rows)
+    return True
+
+
+def _technical_controls_changed() -> bool:
+    """Detect TA control-only reruns to avoid mutating table selection."""
+    current = {
+        "sel_start_ui": st.session_state.get("sel_start_ui"),
+        "sel_end_ui": st.session_state.get("sel_end_ui"),
+        "calc_fib_start": st.session_state.get("calc_fib_start"),
+        "calc_fib_end": st.session_state.get("calc_fib_end"),
+        "fibo_trend_inspect": st.session_state.get("fibo_trend_inspect"),
+    }
+    previous = st.session_state.get("_last_tech_controls_state")
+    st.session_state["_last_tech_controls_state"] = current
+    if not previous:
+        return False
+    return any(current.get(k) != previous.get(k) for k in current)
+
+
+def prepare_table_selection_before_render(summary_df, table_key: str = "portfolio_table") -> None:
+    """Clear selection, apply pending normalization, or preserve on TA-only reruns."""
+    _apply_pending_widget_selection(summary_df, table_key)
+
+    if st.session_state.pop(_PRESERVE_SELECTION_KEY, False):
+        prev_rows = st.session_state.get("table_sel_rows", [])
+        if prev_rows:
+            commit_selection_state(prev_rows, summary_df)
+            st.session_state[table_key] = _selection_widget_state(prev_rows)
+        st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
+
     if st.session_state.pop("clear_table_selection", False):
         st.session_state.table_sel_rows = []
         st.session_state.selected_symbols = []
         st.session_state[table_key] = _selection_widget_state([])
-        return False
+        return
 
-    raw_rows = _raw_selection_rows(table_key)
+    if _technical_controls_changed():
+        prev_rows = st.session_state.get("table_sel_rows", [])
+        commit_selection_state(prev_rows, summary_df)
+        st.session_state[table_key] = _selection_widget_state(prev_rows)
+
+
+def apply_table_selection_after_widget(
+    event,
+    summary_df,
+    table_key: str = "portfolio_table",
+) -> None:
+    """
+    Normalize selection from the dataframe's current event (after user click).
+    Must run after st.dataframe so the click is visible in widget state.
+    """
+    if st.session_state.pop(_SKIP_SELECTION_APPLY_KEY, False):
+        return
+
+    raw_rows = _raw_selection_rows(table_key, event_state=event)
+    if not raw_rows and not st.session_state.get("table_sel_rows"):
+        return
+
     prev_rows = st.session_state.get("table_sel_rows", [])
     shift_held, alt_held = get_table_click_modifiers()
     rows = normalize_table_selection_rows(
@@ -157,15 +223,9 @@ def reconcile_table_selection(
     canonical = sorted({int(r) for r in raw_rows})
     normalized = sorted({int(r) for r in rows})
     if normalized != canonical:
-        st.session_state[table_key] = _selection_widget_state(rows)
+        # Widget state cannot be written after st.dataframe; fix on the next run.
+        st.session_state[_pending_selection_key(table_key)] = normalized
         st.rerun()
-        return True
-    return False
-
-
-def reconcile_table_selection_before_render(summary_df, table_key="portfolio_table"):
-    """Normalize selection before the table mounts."""
-    return reconcile_table_selection(summary_df, table_key)
 
 
 def _column_display_name(column: str) -> str:
@@ -271,8 +331,8 @@ def _view_columns(view_name, summary_df):
 
 def _render_add_symbol_bar(portfolio_id: int) -> bool:
     st.markdown('<div class="portfolio-edit-anchor"></div>', unsafe_allow_html=True)
-    add_col, sym_col, cur_col, save_col = st.columns(
-        [0.95, 3.2, 0.75, 1.05], gap="small", vertical_alignment="center"
+    add_col, del_col, sym_col, cur_col, save_col = st.columns(
+        [0.95, 1.15, 2.8, 0.75, 1.05], gap="small", vertical_alignment="center"
     )
     with add_col:
         add_clicked = st.button(
@@ -280,6 +340,19 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
             use_container_width=True,
             key=f"portfolio_add_btn_{portfolio_id}",
             help="Add ticker (validated via Yahoo Finance)",
+        )
+    with del_col:
+        selected_symbols = [
+            str(s).strip().upper()
+            for s in (st.session_state.get("selected_symbols") or [])
+            if str(s).strip()
+        ]
+        delete_clicked = st.button(
+            "Delete selected",
+            use_container_width=True,
+            key=f"portfolio_delete_selected_btn_{portfolio_id}",
+            disabled=not selected_symbols,
+            help="Delete checked rows from this portfolio draft",
         )
     with sym_col:
         raw = st.text_input(
@@ -302,6 +375,26 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
             use_container_width=True,
             key=f"portfolio_save_btn_{portfolio_id}",
         )
+
+    if delete_clicked:
+        holdings = get_editable_holdings_df()
+        if holdings is None or holdings.empty:
+            st.info("No rows to delete.")
+            return save_clicked
+        before = len(holdings)
+        updated = holdings[
+            ~holdings["Symbol"].astype(str).str.strip().str.upper().isin(selected_symbols)
+        ].reset_index(drop=True)
+        removed = before - len(updated)
+        if removed <= 0:
+            st.info("No matching selected rows to delete.")
+            return save_clicked
+        set_holdings_draft(portfolio_id, updated)
+        st.session_state.clear_table_selection = True
+        st.session_state.selected_symbols = []
+        invalidate_analysis(refetch_metadata=False)
+        st.success(f"Deleted {removed} row(s).")
+        st.rerun()
 
     if add_clicked:
         symbol_input = (raw or "").strip()
@@ -337,7 +430,12 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
     return save_clicked
 
 
-def render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_table"):
+def render_portfolio_table_readonly(
+    summary_df,
+    view_name,
+    selection_df,
+    table_key="portfolio_table",
+):
     """Read-only styled table (Standard / Trends views)."""
     cols = _view_columns(view_name, summary_df)
     display_df = format_display_numerics(summary_df[cols].copy())
@@ -368,7 +466,7 @@ def render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_
     sel_rows = st.session_state.get("table_sel_rows", [])
     selection_default = _selection_widget_state(sel_rows) if sel_rows else None
 
-    st.dataframe(
+    event = st.dataframe(
         styled,
         use_container_width=True,
         hide_index=True,
@@ -378,6 +476,7 @@ def render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_
         selection_default=selection_default,
         key=table_key,
     )
+    apply_table_selection_after_widget(event, selection_df, table_key=table_key)
 
 
 def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:
@@ -427,12 +526,16 @@ def _style_roi_dataframe(display_df: pd.DataFrame):
     return styled
 
 
-def _render_roi_dataframe(display_df: pd.DataFrame, table_key: str = "portfolio_table"):
+def _render_roi_dataframe(
+    display_df: pd.DataFrame,
+    selection_df: pd.DataFrame,
+    table_key: str = "portfolio_table",
+):
     """Sortable ROI table (st.dataframe — same key/state model as Standard/Trends)."""
     cols = list(display_df.columns)
     sel_rows = st.session_state.get("table_sel_rows", [])
     selection_default = _selection_widget_state(sel_rows) if sel_rows else None
-    st.dataframe(
+    event = st.dataframe(
         _style_roi_dataframe(display_df),
         use_container_width=True,
         hide_index=True,
@@ -442,6 +545,7 @@ def _render_roi_dataframe(display_df: pd.DataFrame, table_key: str = "portfolio_
         selection_default=selection_default,
         key=table_key,
     )
+    apply_table_selection_after_widget(event, selection_df, table_key=table_key)
 
 
 def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
@@ -470,25 +574,38 @@ def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
     return edited
 
 
-def render_portfolio_table_roi(summary_df, holdings_df, table_key: str = "portfolio_table") -> pd.DataFrame:
+def render_portfolio_table_roi(
+    summary_df,
+    holdings_df,
+    selection_df: pd.DataFrame,
+    table_key: str = "portfolio_table",
+) -> pd.DataFrame:
     """
     ROI view: always show a sortable dataframe (like Standard/Trends).
     When ⋮ is open, an edit table appears below for inline holdings changes.
     """
     display_df = _build_roi_display_df(summary_df, holdings_df)
-    _render_roi_dataframe(display_df, table_key=table_key)
+    _render_roi_dataframe(display_df, selection_df, table_key=table_key)
     if is_portfolio_more_open():
         with st.expander("Edit portfolio rows", expanded=False):
             return _render_roi_data_editor(display_df)
     return display_df
 
 
+def _selection_df_for_view(view_name: str, summary_df: pd.DataFrame, holdings_df) -> pd.DataFrame:
+    """Row index source for selection reconcile — must match the rendered table."""
+    if view_name == "ROI":
+        has_holdings = holdings_df is not None and not holdings_df.empty
+        if not has_holdings and summary_df.empty:
+            return pd.DataFrame()
+        return _build_roi_display_df(summary_df, holdings_df)
+    return summary_df
+
+
 def render_portfolio_table_section():
     """Portfolio table with view switcher; ROI view supports inline holdings edits."""
     results = st.session_state.get("all_results") or []
     summary_df = pd.DataFrame([x["data"] for x in results]) if results else pd.DataFrame()
-    if not summary_df.empty and reconcile_table_selection_before_render(summary_df):
-        return
 
     active = load_active_portfolio()
     portfolio_id = active.portfolio_id
@@ -506,6 +623,7 @@ def render_portfolio_table_section():
     if is_portfolio_more_open():
         save_clicked = _render_add_symbol_bar(portfolio_id)
 
+    # Render view switcher before selection reconcile so reruns keep the active tab.
     view_name = st.radio(
         "View",
         view_options,
@@ -513,6 +631,10 @@ def render_portfolio_table_section():
         key="portfolio_table_view",
         label_visibility="collapsed",
     )
+
+    selection_df = _selection_df_for_view(view_name, summary_df, holdings_df)
+    if not selection_df.empty:
+        prepare_table_selection_before_render(selection_df)
 
     portfolio_metadata_progress()
 
@@ -527,9 +649,13 @@ def render_portfolio_table_section():
             edited = holdings_df
         elif summary_df.empty:
             st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
-            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
+            edited = render_portfolio_table_roi(
+                summary_df, holdings_df, selection_df, table_key="portfolio_table"
+            )
         else:
-            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
+            edited = render_portfolio_table_roi(
+                summary_df, holdings_df, selection_df, table_key="portfolio_table"
+            )
         if save_clicked:
             roi_errors = validate_roi_editor_df(edited)
             if roi_errors:
@@ -554,7 +680,9 @@ def render_portfolio_table_section():
                 except Exception as e:
                     st.error(f"Could not save: {e}")
     elif not summary_df.empty:
-        render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_table")
+        render_portfolio_table_readonly(
+            summary_df, view_name, selection_df, table_key="portfolio_table"
+        )
     else:
         st.caption("Load symbols to see Standard and Trends views.")
 

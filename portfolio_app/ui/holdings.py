@@ -120,11 +120,17 @@ def validate_roi_editor_df(edited_df: pd.DataFrame) -> list[str]:
     if edited_df is None or edited_df.empty:
         return ["Add at least one symbol row with Symbol, Shares, Cost/Share, and Target."]
 
+    def _normalized_symbol(value) -> str:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        symbol = str(value).strip().upper()
+        return "" if symbol in {"", "NONE", "NAN"} else symbol
+
     errors = []
     for idx, row in edited_df.iterrows():
-        symbol = str(row.get("Symbol", "")).strip().upper()
+        symbol = _normalized_symbol(row.get("Symbol"))
         if not symbol:
-            errors.append(f"Row {int(idx) + 1}: Symbol is required.")
+            # Empty symbol rows are treated as deletions on save.
             continue
 
         for col, label in (
@@ -161,11 +167,8 @@ def validate_roi_editor_df(edited_df: pd.DataFrame) -> list[str]:
             except Exception:
                 pass
 
-    symbols = [
-        str(s).strip().upper()
-        for s in edited_df["Symbol"].tolist()
-        if str(s).strip()
-    ]
+    symbols = [_normalized_symbol(s) for s in edited_df["Symbol"].tolist()]
+    symbols = [s for s in symbols if s]
     dupes = {s for s in symbols if symbols.count(s) > 1}
     for sym in sorted(dupes):
         errors.append(f"{sym}: duplicate symbol — keep one row per ticker.")

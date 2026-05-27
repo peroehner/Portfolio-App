@@ -7,38 +7,75 @@ import streamlit.components.v1 as components
 
 from portfolio_app.config import BEAR_TREND_PATH, BULL_TREND_PATH
 
+_MODIFIER_SCRIPT = """
+<script>
+(function () {
+    var win = window.parent;
+    var doc = win.document;
+    if (win.__pero_modifiers_bound) return;
+    win.__pero_modifiers_bound = true;
+
+    function modifierHeld(e) {
+        return !!(
+            e.altKey
+            || (e.getModifierState && e.getModifierState("Alt"))
+            || e.ctrlKey
+        );
+    }
+
+    function syncModifiers(e) {
+        try {
+            var url = new URL(win.location.href);
+            var alt = modifierHeld(e);
+            var shift = !!(e.shiftKey || (e.getModifierState && e.getModifierState("Shift")));
+            url.searchParams.set("_pero_alt", alt ? "1" : "0");
+            url.searchParams.set("_pero_shift", shift ? "1" : "0");
+            win.history.replaceState({}, "", url);
+        } catch (err) {}
+    }
+
+    // Only pointer/mouse down — keyup was clearing Alt before Streamlit reran.
+    doc.addEventListener("pointerdown", syncModifiers, true);
+    doc.addEventListener("mousedown", syncModifiers, true);
+})();
+</script>
+"""
+
 
 def inject_table_click_modifiers():
-    """Record Alt/Shift on mousedown into URL params for the next rerun."""
-    components.html(
-        """
-        <script>
-        (function () {
-            var doc = window.parent.document;
-            function syncModifiers(e) {
-                try {
-                    var url = new URL(window.parent.location.href);
-                    url.searchParams.set("_pero_alt", e.altKey ? "1" : "0");
-                    url.searchParams.set("_pero_shift", e.shiftKey ? "1" : "0");
-                    window.parent.history.replaceState({}, "", url);
-                } catch (err) {}
-            }
-            doc.addEventListener("mousedown", syncModifiers, true);
-            doc.addEventListener("keydown", syncModifiers, true);
-            doc.addEventListener("keyup", syncModifiers, true);
-        })();
-        </script>
-        """,
-        height=0,
-    )
+    """Record Alt/Shift on pointer down into URL params for the next rerun."""
+    components.html(_MODIFIER_SCRIPT, height=0)
+
+
+def _qp_flag(name: str) -> bool | None:
+    """Read a 0/1 query flag; None if the param is absent this run."""
+    if name not in st.query_params:
+        return None
+    raw = st.query_params.get(name)
+    if isinstance(raw, list):
+        raw = raw[-1] if raw else "0"
+    return str(raw).lower() in ("1", "true")
+
+
+def prime_click_modifiers():
+    """Latch modifier keys from URL at the start of each run."""
+    get_table_click_modifiers()
 
 
 def get_table_click_modifiers():
-    """Return (shift_held, alt_held) from the click that triggered this rerun."""
-    qp = st.query_params
-    shift = str(qp.get("_pero_shift", "0")).lower() in ("1", "true")
-    alt = str(qp.get("_pero_alt", "0")).lower() in ("1", "true")
-    return shift, alt
+    """Return (shift_held, alt_held) latched from the last pointer down."""
+    shift_qp = _qp_flag("_pero_shift")
+    alt_qp = _qp_flag("_pero_alt")
+
+    if shift_qp is not None:
+        st.session_state["_pero_shift_held"] = shift_qp
+    if alt_qp is not None:
+        st.session_state["_pero_alt_held"] = alt_qp
+
+    return (
+        bool(st.session_state.get("_pero_shift_held", False)),
+        bool(st.session_state.get("_pero_alt_held", False)),
+    )
 
 
 @st.cache_data

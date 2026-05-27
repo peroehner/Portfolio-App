@@ -46,6 +46,24 @@ def enrich_symbol_metadata(all_results, symbol):
     st.session_state.enriched_symbols.add(symbol)
 
 
+def metadata_map_from_results(all_results):
+    """Rebuild analyst tuples from session rows already enriched."""
+    enriched = st.session_state.get("enriched_symbols", set())
+    if not enriched:
+        return {}
+    metadata_map = {}
+    for item in all_results:
+        symbol = item["data"]["Symbol"]
+        if symbol not in enriched:
+            continue
+        metadata_map[symbol] = (
+            item["data"].get("Est Target"),
+            item["data"].get("Change %"),
+            item["data"].get("Div Yield"),
+        )
+    return metadata_map
+
+
 def start_metadata_background_load(symbols):
     """Queue analyst fields to load progressively after prices are shown."""
     symbol_list = list(dict.fromkeys(symbols))
@@ -55,6 +73,22 @@ def start_metadata_background_load(symbols):
     st.session_state.metadata_enriched = False
     st.session_state.enriched_symbols = set()
     st.session_state.pop("analyst_loaded_notice_at", None)
+
+
+def start_metadata_for_new_symbols(symbols):
+    """Queue analyst load only for symbols not yet in enriched_symbols."""
+    enriched = st.session_state.get("enriched_symbols", set())
+    new_symbols = [s for s in dict.fromkeys(symbols) if s not in enriched]
+    if not new_symbols:
+        return
+    queue = list(st.session_state.get("metadata_queue", []))
+    for symbol in new_symbols:
+        if symbol not in queue:
+            queue.append(symbol)
+    st.session_state.metadata_queue = queue
+    st.session_state.metadata_total = len(enriched) + len(queue)
+    st.session_state.metadata_bg_active = True
+    st.session_state.metadata_enriched = False
 
 
 def prioritize_metadata_symbol(symbol):

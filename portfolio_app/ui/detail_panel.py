@@ -56,39 +56,72 @@ def _ensure_month_range(month_options):
         st.session_state["sel_end_ui"] = month_options[-1]
         st.session_state["fibo_needs_refresh"] = False
 
+    # Chart viewport — must exist before _compute_chart_data (controls row sets again after widgets)
+    st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
+    st.session_state["ui_fib_end"] = st.session_state["sel_end_ui"]
+
 
 def is_trend_overlay_enabled():
     """Read overlay flag from session (survives reruns triggered before toggle renders)."""
     return bool(st.session_state.get("fibo_trend_inspect", True))
 
 
-def _render_time_window_controls(month_options):
-    idx_start = month_options.index(st.session_state["sel_start_ui"])
-    idx_end = month_options.index(st.session_state["sel_end_ui"])
+def _main_trend_summary_html(main_trend, fib_trends) -> str:
+    """Compact one-line trend label for the controls row."""
+    if not main_trend:
+        return '<span class="tech-trend-slot tech-trend-empty">No trend in window</span>'
+    main_trend_type = main_trend["type"]
+    trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
+    trend_icon = get_trend_icon_html(main_trend_type)
+    return (
+        f'<span class="tech-trend-slot tech-trend-line {trend_cls}">'
+        f"{trend_icon}<b>{main_trend_type}</b> · "
+        f"{main_trend['f_start'].strftime('%Y-%m-%d')} → {main_trend['f_end'].strftime('%Y-%m-%d')} · "
+        f"{main_trend['move_pct'] * 100:+.1f}% · {len(fib_trends)} trend(s)"
+        "</span>"
+    )
 
+
+def _bump_start_forward():
+    opts = st.session_state["_tech_month_options"]
+    idx_start = opts.index(st.session_state["sel_start_ui"])
+    idx_end = opts.index(st.session_state["sel_end_ui"])
+    st.session_state["sel_start_ui"] = opts[min(idx_start + 3, idx_end)]
+
+
+def _bump_end_backward():
+    opts = st.session_state["_tech_month_options"]
+    idx_start = opts.index(st.session_state["sel_start_ui"])
+    idx_end = opts.index(st.session_state["sel_end_ui"])
+    st.session_state["sel_end_ui"] = opts[max(idx_end - 3, idx_start)]
+
+
+def _apply_reanalyse():
+    st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
+    st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
+
+
+def _render_tech_controls_row(month_options, main_trend, fib_trends):
+    """One row: trend summary · From/To window · Re-Analyse · Trend overlay (right)."""
+    st.session_state["_tech_month_options"] = month_options
+
+    st.markdown('<div class="tech-controls-anchor"></div>', unsafe_allow_html=True)
     (
-        t_col_toggle,
+        t_col_trend,
         t_col_start_sel,
         t_col_start_btn,
         t_col_end_btn,
         t_col_end_sel,
         t_col_action,
+        t_col_toggle,
     ) = st.columns(
-        [1.0, 1.6, 0.35, 0.35, 1.6, 1.1],
-        vertical_alignment="bottom",
+        [2.45, 0.82, 0.26, 0.26, 0.82, 0.78, 0.72],
+        gap="small",
+        vertical_alignment="center",
     )
 
-    with t_col_toggle:
-        st.toggle("Trend overlay", value=True, key="fibo_trend_inspect")
-
-    with t_col_start_btn:
-        if st.button("⏩", help="Move start forward 3 months", use_container_width=True):
-            st.session_state["sel_start_ui"] = month_options[min(idx_start + 3, idx_end)]
-            st.rerun()
-    with t_col_end_btn:
-        if st.button("⏪", help="Move end back 3 months", use_container_width=True):
-            st.session_state["sel_end_ui"] = month_options[max(idx_end - 3, idx_start)]
-            st.rerun()
+    with t_col_trend:
+        st.markdown(_main_trend_summary_html(main_trend, fib_trends), unsafe_allow_html=True)
 
     with t_col_start_sel:
         st.selectbox(
@@ -96,6 +129,20 @@ def _render_time_window_controls(month_options):
             options=month_options,
             key="sel_start_ui",
             label_visibility="collapsed",
+        )
+    with t_col_start_btn:
+        st.button(
+            "»",
+            help="Move start forward 3 months",
+            use_container_width=True,
+            on_click=_bump_start_forward,
+        )
+    with t_col_end_btn:
+        st.button(
+            "«",
+            help="Move end back 3 months",
+            use_container_width=True,
+            on_click=_bump_end_backward,
         )
     with t_col_end_sel:
         st.selectbox(
@@ -114,15 +161,16 @@ def _render_time_window_controls(month_options):
     )
 
     with t_col_action:
-        if st.button(
-            "📐 Re-Analyse",
+        st.button(
+            "Re-Analyse",
             disabled=not window_changed,
             help="Recalculate Fibonacci levels and trends for the selected time window",
             use_container_width=True,
-        ):
-            st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
-            st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
-            st.rerun()
+            on_click=_apply_reanalyse,
+        )
+
+    with t_col_toggle:
+        st.toggle("Trend overlay", value=True, key="fibo_trend_inspect")
 
 
 def _compute_chart_data(hist_full):
@@ -135,31 +183,17 @@ def _compute_chart_data(hist_full):
     main_trend = fib_trends[0] if fib_trends else None
     dynamic_fibs, fib_anchor = compute_fibonacci_levels(calc_hist, main_trend)
 
-    vis_mask = (hist_full.index >= pd.to_datetime(st.session_state["ui_fib_start"])) & (
-        hist_full.index
-        <= (pd.to_datetime(st.session_state["ui_fib_end"]) + pd.offsets.MonthEnd(0))
+    ui_start = st.session_state.get("ui_fib_start", st.session_state["sel_start_ui"])
+    ui_end = st.session_state.get("ui_fib_end", st.session_state["sel_end_ui"])
+    vis_mask = (hist_full.index >= pd.to_datetime(ui_start)) & (
+        hist_full.index <= (pd.to_datetime(ui_end) + pd.offsets.MonthEnd(0))
     )
     vis_hist = hist_full.loc[vis_mask]
     return vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor
 
 
-def _render_main_trend_summary(main_trend, fib_trends):
-    if not main_trend:
-        return
-    main_trend_type = main_trend["type"]
-    trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
-    trend_icon = get_trend_icon_html(main_trend_type)
-    st.markdown(
-        f'<p class="trend-line {trend_cls}">'
-        f"{trend_icon} <b>{main_trend_type}</b> · "
-        f"{main_trend['f_start'].strftime('%Y-%m-%d')} → {main_trend['f_end'].strftime('%Y-%m-%d')} · "
-        f"{main_trend['move_pct'] * 100:+.1f}% · {len(fib_trends)} trend(s)"
-        f"</p>",
-        unsafe_allow_html=True,
-    )
-
-
 def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
+    st.markdown('<div class="tech-sidebar-anchor"></div>', unsafe_allow_html=True)
     curr_p = pick["data"]["🌐 Price"]
     export_symbols = st.session_state.get("selected_symbols") or []
     export_window_start = st.session_state.get("sel_start_ui")
@@ -174,9 +208,9 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
             st.session_state.all_results,
         )
     export_label = (
-        f"📸 Export Datasets ({len(export_symbols)})"
+        f"Export ({len(export_symbols)})"
         if export_symbols
-        else "📸 Export Datasets"
+        else "Export Datasets"
     )
     st.download_button(
         label=export_label,
@@ -287,10 +321,9 @@ def render_detail_panel():
         unsafe_allow_html=True,
     )
 
-    _render_time_window_controls(month_options)
-    inspect_active = is_trend_overlay_enabled()
     vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor = _compute_chart_data(hist_full)
-    _render_main_trend_summary(main_trend, fib_trends)
+    _render_tech_controls_row(month_options, main_trend, fib_trends)
+    inspect_active = is_trend_overlay_enabled()
 
     chart_col, sidebar_col = st.columns([3.2, 0.8])
     with chart_col:

@@ -1,4 +1,4 @@
-"""Portfolio table views, multi-row selection, and styling."""
+"""Portfolio table views, multi-row selection, inline ROI editing, and styling."""
 import pandas as pd
 import streamlit as st
 
@@ -7,12 +7,30 @@ from portfolio_app.config import (
     METADATA_LATE_COLS,
     TABLE_CURRENCY_COLS,
     TABLE_GRADIENT_EXCLUDE,
+    TABLE_NUMBER_COLUMN_FORMAT,
     TABLE_PERCENT_COLS,
     TABLE_PNL_COLS,
     TABLE_VIEW_COLUMNS,
 )
-from portfolio_app.data.metadata import prioritize_metadata_symbol
+from portfolio_app.data.market_data import validate_symbol
+from portfolio_app.data.metadata import portfolio_metadata_progress, prioritize_metadata_symbol
+from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
+from portfolio_app.ui.toolbar import is_portfolio_more_open
 from portfolio_app.ui.components import get_table_click_modifiers
+from portfolio_app.ui.holdings import (
+    ROI_EDITABLE_COLUMNS,
+    append_symbol_to_draft,
+    clear_holdings_draft,
+    display_df_to_holdings,
+    enrich_summary_with_currency,
+    get_editable_holdings_df,
+    holdings_to_roi_display_df,
+    merge_holdings_into_roi_display,
+    prepare_roi_editor_df,
+    save_holdings_from_df,
+    set_holdings_draft,
+    validate_roi_editor_df,
+)
 from portfolio_app.ui.table_style import style_signed_column
 
 
@@ -32,9 +50,22 @@ def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_he
     is_contiguous = new_rows[-1] - new_rows[0] + 1 == len(new_rows)
 
     if alt_held:
+        if not new_rows:
+            return []
+        # Uncheck: widget keeps the other selected rows.
         if len(removed) == 1 and not added:
             return new_rows
+        # Check: widget adds one row without dropping others.
         if len(added) == 1 and not removed:
+            return sorted(set(prev_rows) | added)
+        # Widget replaced selection with only the clicked row — toggle that row.
+        if len(new_rows) == 1:
+            t = new_rows[0]
+            if t in prev_rows:
+                return sorted(r for r in prev_rows if r != t)
+            return sorted(set(prev_rows) | {t})
+        # One new row while others dropped from widget state — still add it.
+        if len(added) == 1:
             return sorted(set(prev_rows) | added)
         return new_rows
 
@@ -82,23 +113,40 @@ def commit_selection_state(rows, summary_df):
         prioritize_metadata_symbol(focus)
 
 
-def reconcile_table_selection_before_render(summary_df, table_key="portfolio_table"):
+def _raw_selection_rows(table_key: str, event_state=None) -> list[int]:
+    """Read row indices from dataframe widget state or its return value."""
+    sources = (event_state, st.session_state.get(table_key))
+    for src in sources:
+        if src is None:
+            continue
+        selection = src.get("selection") if hasattr(src, "get") else getattr(src, "selection", None)
+        if not selection:
+            continue
+        rows = selection.get("rows") if hasattr(selection, "get") else getattr(selection, "rows", None)
+        if rows is not None:
+            return [int(r) for r in rows]
+    return []
+
+
+def _selection_widget_state(rows: list[int]) -> dict:
+    return {"selection": {"rows": list(rows)}}
+
+
+def reconcile_table_selection(
+    summary_df,
+    table_key: str = "portfolio_table",
+) -> bool:
     """
-    Normalize selection before st.dataframe mounts.
-    Streamlit updates session state from the UI before the script runs; we align
-    it here so rapid clicks do not race with post-render corrections.
+    Normalize selection before the dataframe widget mounts.
+    Returns True if a rerun was triggered to apply corrected selection.
     """
     if st.session_state.pop("clear_table_selection", False):
         st.session_state.table_sel_rows = []
         st.session_state.selected_symbols = []
-        st.session_state[table_key] = {"selection": {"rows": []}}
+        st.session_state[table_key] = _selection_widget_state([])
         return False
 
-    raw_rows = []
-    widget_state = st.session_state.get(table_key)
-    if isinstance(widget_state, dict):
-        raw_rows = list(widget_state.get("selection", {}).get("rows", []))
-
+    raw_rows = _raw_selection_rows(table_key)
     prev_rows = st.session_state.get("table_sel_rows", [])
     shift_held, alt_held = get_table_click_modifiers()
     rows = normalize_table_selection_rows(
@@ -107,31 +155,192 @@ def reconcile_table_selection_before_render(summary_df, table_key="portfolio_tab
     commit_selection_state(rows, summary_df)
 
     canonical = sorted({int(r) for r in raw_rows})
-    if rows != canonical:
-        st.session_state[table_key] = {"selection": {"rows": rows}}
+    normalized = sorted({int(r) for r in rows})
+    if normalized != canonical:
+        st.session_state[table_key] = _selection_widget_state(rows)
         st.rerun()
         return True
     return False
 
 
+def reconcile_table_selection_before_render(summary_df, table_key="portfolio_table"):
+    """Normalize selection before the table mounts."""
+    return reconcile_table_selection(summary_df, table_key)
+
+
+def _column_display_name(column: str) -> str:
+    """Plain header labels for the data editor."""
+    labels = {
+        "🌐 Price": "Price",
+        "📈 Target": "Target",
+        "📈 Total %": "Total %",
+        "∆ Act-Target %": "Δ Act-Target %",
+        "∆ Act-Est Target %": "Δ Act-Est Target %",
+        "Ø CAGR": "CAGR",
+    }
+    return labels.get(column, column)
+
+
+def format_display_numerics(df: pd.DataFrame) -> pd.DataFrame:
+    """Round numeric cells for consistent US-style display in tables."""
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if col not in TABLE_NUMBER_COLUMN_FORMAT:
+            continue
+        numeric = pd.to_numeric(out[col], errors="coerce")
+        if col == "Div Yield":
+            out[col] = numeric.round(1)
+        elif col == "Shares":
+            out[col] = numeric.round(2)
+        else:
+            out[col] = numeric.round(2)
+    return out
+
+
+def get_portfolio_table_column_config(columns, *, editable: bool = False):
+    """
+    Column config; Symbol pinned. Consistent $ / % formats on numeric columns.
+
+    For st.dataframe (read-only), omit disabled= so every column can be sorted.
+    For st.data_editor, disabled= locks non-editable columns (and blocks their sort).
+    """
+    config = {}
+    if "Symbol" in columns:
+        sym_kw: dict = {"pinned": True, "width": "small"}
+        if editable:
+            sym_kw["disabled"] = "Symbol" not in ROI_EDITABLE_COLUMNS
+        config["Symbol"] = st.column_config.TextColumn("Symbol", **sym_kw)
+    if "PurchaseDate" in columns:
+        pd_kw: dict = {}
+        if editable:
+            pd_kw["disabled"] = "PurchaseDate" not in ROI_EDITABLE_COLUMNS
+        pd_kw["format"] = "YYYY-MM-DD"
+        config["PurchaseDate"] = st.column_config.DateColumn("Purchase date", **pd_kw)
+    if "Currency" in columns:
+        cur_kw: dict = {"options": ["USD", "EUR"], "required": True}
+        if editable:
+            cur_kw["disabled"] = "Currency" not in ROI_EDITABLE_COLUMNS
+        config["Currency"] = st.column_config.SelectboxColumn("Currency", **cur_kw)
+
+    editable_numeric = set(ROI_EDITABLE_COLUMNS) if editable else set()
+    for col, fmt in TABLE_NUMBER_COLUMN_FORMAT.items():
+        if col not in columns:
+            continue
+        kwargs: dict = {
+            "label": _column_display_name(col),
+            "format": fmt,
+        }
+        if editable:
+            kwargs["disabled"] = col not in editable_numeric
+            if col in editable_numeric:
+                kwargs["min_value"] = 0
+        config[col] = st.column_config.NumberColumn(**kwargs)
+
+    return config
+
+
 def get_table_format_dict(columns):
-    """Column format strings for the styled portfolio table."""
-    format_dict = {col: "{:.2f}%" for col in TABLE_PERCENT_COLS if col in columns}
+    """Pandas Styler formats — $ prefix, % suffix, thousands separators."""
+    format_dict = {}
+    for col in TABLE_PERCENT_COLS:
+        if col in columns:
+            format_dict[col] = "{:.2f}%"
     if "Div Yield" in columns:
         format_dict["Div Yield"] = "{:.1f}%"
     for col in TABLE_CURRENCY_COLS:
         if col in columns:
-            format_dict[col] = "{:.2f} $"
+            format_dict[col] = "${:,.2f}"
+    if "Shares" in columns:
+        format_dict["Shares"] = "{:,.2f}"
     return format_dict
 
 
-def render_portfolio_table(summary_df, view_name, table_key="portfolio_table"):
-    """Render one table detail view; returns the dataframe selection event."""
+def _view_columns(view_name, summary_df):
     cols = [c for c in TABLE_VIEW_COLUMNS[view_name] if c in summary_df.columns]
+    if view_name == "ROI" and "Currency" not in cols:
+        if "Cost/Share" in cols:
+            cols.insert(cols.index("Cost/Share") + 1, "Currency")
+        else:
+            cols.append("Currency")
     if "Symbol" in summary_df.columns and "Symbol" not in cols:
         cols = ["Symbol"] + cols
+    return cols
 
-    display_df = summary_df[cols].copy()
+
+def _render_add_symbol_bar(portfolio_id: int) -> bool:
+    st.markdown('<div class="portfolio-edit-anchor"></div>', unsafe_allow_html=True)
+    add_col, sym_col, cur_col, save_col = st.columns(
+        [0.95, 3.2, 0.75, 1.05], gap="small", vertical_alignment="center"
+    )
+    with add_col:
+        add_clicked = st.button(
+            "Add symbol",
+            use_container_width=True,
+            key=f"portfolio_add_btn_{portfolio_id}",
+            help="Add ticker (validated via Yahoo Finance)",
+        )
+    with sym_col:
+        raw = st.text_input(
+            "Symbol",
+            placeholder="e.g. AAPL",
+            key=f"portfolio_add_symbol_{portfolio_id}",
+            label_visibility="collapsed",
+        )
+    with cur_col:
+        currency = st.selectbox(
+            "Currency",
+            options=["USD", "EUR"],
+            key=f"portfolio_add_currency_{portfolio_id}",
+            label_visibility="collapsed",
+        )
+    with save_col:
+        save_clicked = st.button(
+            "Save portfolio",
+            type="primary",
+            use_container_width=True,
+            key=f"portfolio_save_btn_{portfolio_id}",
+        )
+
+    if add_clicked:
+        symbol_input = (raw or "").strip()
+        if not symbol_input:
+            st.warning("Enter a ticker symbol.")
+            return save_clicked
+
+        with st.spinner(f"Checking {symbol_input.upper()}…"):
+            valid, normalized, _ = validate_symbol(symbol_input)
+
+        if not valid:
+            st.error(
+                f'"{symbol_input.upper()}" was not found on Yahoo Finance. '
+                "Check the ticker and try again."
+            )
+            return save_clicked
+
+        try:
+            holdings = get_editable_holdings_df()
+            updated = append_symbol_to_draft(
+                portfolio_id, holdings, normalized, currency
+            )
+            set_holdings_draft(portfolio_id, updated)
+            invalidate_analysis(refetch_metadata=False)
+            st.session_state.portfolio_table_view = "ROI"
+            st.success(
+                f"Added {normalized} ({currency}). Fill in shares/cost, then Save portfolio."
+            )
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+
+    return save_clicked
+
+
+def render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_table"):
+    """Read-only styled table (Standard / Trends views)."""
+    cols = _view_columns(view_name, summary_df)
+    display_df = format_display_numerics(summary_df[cols].copy())
     format_dict = get_table_format_dict(cols)
     actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
 
@@ -156,49 +365,201 @@ def render_portfolio_table(summary_df, view_name, table_key="portfolio_table"):
     if gradient_cols:
         styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
 
-    return st.dataframe(
+    sel_rows = st.session_state.get("table_sel_rows", [])
+    selection_default = _selection_widget_state(sel_rows) if sel_rows else None
+
+    st.dataframe(
         styled,
         use_container_width=True,
+        hide_index=True,
+        column_config=get_portfolio_table_column_config(cols, editable=False),
         on_select="rerun",
         selection_mode="multi-row",
+        selection_default=selection_default,
         key=table_key,
     )
 
 
+def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:
+    """Prepare ROI table data (analysis rows merged with holdings draft)."""
+    view_name = "ROI"
+    if summary_df is not None and not summary_df.empty:
+        cols = _view_columns(view_name, summary_df)
+        base_cols = [c for c in cols if c in summary_df.columns]
+        display_df = enrich_summary_with_currency(summary_df[base_cols], holdings_df)
+    else:
+        display_df = holdings_to_roi_display_df(holdings_df)
+        cols = _view_columns(view_name, display_df)
+    display_df = display_df[[c for c in cols if c in display_df.columns]]
+    display_df = prepare_roi_editor_df(display_df)
+    display_df = merge_holdings_into_roi_display(display_df, holdings_df)
+    return format_display_numerics(display_df)
+
+
+def _style_roi_dataframe(display_df: pd.DataFrame):
+    """Same gradients/formatting as Standard/Trends for the sortable ROI view."""
+    cols = list(display_df.columns)
+    format_dict = get_table_format_dict(cols)
+    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
+
+    skip_fillna = METADATA_COLS | METADATA_LATE_COLS
+    fill_cols = [
+        c
+        for c in TABLE_PERCENT_COLS + ["Div Yield"]
+        if c in display_df.columns and c not in skip_fillna
+    ]
+    out = display_df.copy()
+    if fill_cols:
+        out[fill_cols] = out[fill_cols].fillna(0)
+
+    gradient_cols = [
+        c
+        for c in TABLE_PERCENT_COLS
+        if c in out.columns
+        and c in actual_format_dict
+        and c not in TABLE_GRADIENT_EXCLUDE
+    ] + [c for c in TABLE_PNL_COLS if c in out.columns]
+    styled = out.style.format(actual_format_dict, na_rep="-").set_properties(
+        **{"background-color": "white", "color": "black"}
+    )
+    if gradient_cols:
+        styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
+    return styled
+
+
+def _render_roi_dataframe(display_df: pd.DataFrame, table_key: str = "portfolio_table"):
+    """Sortable ROI table (st.dataframe — same key/state model as Standard/Trends)."""
+    cols = list(display_df.columns)
+    sel_rows = st.session_state.get("table_sel_rows", [])
+    selection_default = _selection_widget_state(sel_rows) if sel_rows else None
+    st.dataframe(
+        _style_roi_dataframe(display_df),
+        use_container_width=True,
+        hide_index=True,
+        column_config=get_portfolio_table_column_config(cols, editable=False),
+        on_select="rerun",
+        selection_mode="multi-row",
+        selection_default=selection_default,
+        key=table_key,
+    )
+
+
+def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
+    """Editable ROI table when ⋮ menu is open (st.data_editor — limited column sort)."""
+    disabled = [c for c in display_df.columns if c not in ROI_EDITABLE_COLUMNS]
+
+    st.markdown('<div class="roi-table-anchor"></div>', unsafe_allow_html=True)
+    edited = st.data_editor(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        column_config=get_portfolio_table_column_config(
+            list(display_df.columns), editable=True
+        ),
+        disabled=disabled,
+        key="portfolio_table_roi_editor",
+    )
+
+    roi_errors = validate_roi_editor_df(edited)
+    if roi_errors:
+        st.caption("Fix these fields in the table before saving:")
+        for msg in roi_errors:
+            st.warning(msg)
+
+    return edited
+
+
+def render_portfolio_table_roi(summary_df, holdings_df, table_key: str = "portfolio_table") -> pd.DataFrame:
+    """
+    ROI view: always show a sortable dataframe (like Standard/Trends).
+    When ⋮ is open, an edit table appears below for inline holdings changes.
+    """
+    display_df = _build_roi_display_df(summary_df, holdings_df)
+    _render_roi_dataframe(display_df, table_key=table_key)
+    if is_portfolio_more_open():
+        with st.expander("Edit portfolio rows", expanded=False):
+            return _render_roi_data_editor(display_df)
+    return display_df
+
+
 def render_portfolio_table_section():
-    """Tabbed column views with one multi-select table on the active tab only."""
-    summary_df = pd.DataFrame([x["data"] for x in st.session_state.all_results])
-    if reconcile_table_selection_before_render(summary_df):
+    """Portfolio table with view switcher; ROI view supports inline holdings edits."""
+    results = st.session_state.get("all_results") or []
+    summary_df = pd.DataFrame([x["data"] for x in results]) if results else pd.DataFrame()
+    if not summary_df.empty and reconcile_table_selection_before_render(summary_df):
         return
+
+    active = load_active_portfolio()
+    portfolio_id = active.portfolio_id
+    holdings_df = get_editable_holdings_df()
+
     view_options = list(TABLE_VIEW_COLUMNS.keys())
     default_view = st.session_state.get("portfolio_table_view", view_options[0])
     if default_view not in view_options:
         default_view = view_options[0]
 
-    tab_widgets = st.tabs(
+    if "portfolio_table_view" not in st.session_state:
+        st.session_state.portfolio_table_view = default_view
+
+    save_clicked = False
+    if is_portfolio_more_open():
+        save_clicked = _render_add_symbol_bar(portfolio_id)
+
+    view_name = st.radio(
+        "View",
         view_options,
+        horizontal=True,
         key="portfolio_table_view",
-        default=default_view,
-        on_change="rerun",
+        label_visibility="collapsed",
     )
 
-    for view_name, tab in zip(view_options, tab_widgets):
-        if tab.open:
-            with tab:
-                render_portfolio_table(summary_df, view_name, table_key="portfolio_table")
+    portfolio_metadata_progress()
 
-    selected_symbols = st.session_state.get("selected_symbols") or []
-    focus = st.session_state.get("selected_symbol")
-    if selected_symbols:
-        sym_label = ", ".join(selected_symbols) if len(selected_symbols) <= 4 else (
-            f"{', '.join(selected_symbols[:3])}, +{len(selected_symbols) - 3} more"
-        )
-        st.caption(
-            f"**{len(selected_symbols)}** selected for export ({sym_label})"
-            + (f" · Detail: **{focus}**" if focus else "")
-        )
+    has_holdings = holdings_df is not None and not holdings_df.empty
+
+    if view_name == "ROI":
+        if not has_holdings:
+            if is_portfolio_more_open():
+                st.caption("No symbols yet — add one above, then **Save portfolio**.")
+            else:
+                st.caption("No symbols yet — open **⋮** to add holdings.")
+            edited = holdings_df
+        elif summary_df.empty:
+            st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
+            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
+        else:
+            edited = render_portfolio_table_roi(summary_df, holdings_df, table_key="portfolio_table")
+        if save_clicked:
+            roi_errors = validate_roi_editor_df(edited)
+            if roi_errors:
+                st.error("Cannot save — complete all required fields in the ROI table:")
+                for msg in roi_errors:
+                    st.warning(msg)
+            else:
+                try:
+                    if summary_df.empty and has_holdings:
+                        holdings_out = display_df_to_holdings(edited)
+                    elif summary_df.empty:
+                        holdings_out = get_editable_holdings_df()
+                        if holdings_out.empty:
+                            raise ValueError("Add at least one symbol before saving.")
+                    else:
+                        holdings_out = display_df_to_holdings(edited)
+                    save_holdings_from_df(portfolio_id, holdings_out)
+                    st.success("Portfolio saved.")
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Could not save: {e}")
+    elif not summary_df.empty:
+        render_portfolio_table_readonly(summary_df, view_name, table_key="portfolio_table")
     else:
+        st.caption("Load symbols to see Standard and Trends views.")
+
+    if view_name != "ROI":
         st.caption(
-            "Click = single row · **Shift+click** = range · **Alt+click** = toggle row · "
+            "Click = single row · **Shift+click** = range · **Alt/Option+click** = toggle row · "
             "uncheck = remove"
         )

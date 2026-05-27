@@ -1,15 +1,16 @@
 """Upload, reset, and refresh toolbar."""
+import os
+
 import streamlit as st
 
-from portfolio_app.data.portfolio_loader import (
-    _read_uploaded_portfolio,
-    get_cli_filename,
+from portfolio_app.data.portfolio_loader import _read_uploaded_portfolio
+from portfolio_app.services.session_context import (
+    activate_portfolio,
+    get_portfolio_service,
+    get_session_user,
 )
-from portfolio_app.session_keys import (
-    PORTFOLIO_RESET_KEYS,
-    clear_portfolio_table_widget,
-    clear_session_keys,
-)
+from portfolio_app.ui.holdings import get_editable_holdings_df
+from portfolio_app.ui.portfolio_bar import render_portfolio_controls
 
 
 def ensure_uploader_key():
@@ -18,92 +19,178 @@ def ensure_uploader_key():
         "portfolio_upload_popover",
         "pending_close_upload_popover",
         "_table_tab_for_upload_guard",
+        "upload_pending_df",
+        "upload_pending_name",
+        "upload_pending_key",
+        "upload_replace_confirmed",
     ):
         st.session_state.pop(stale, None)
     if "uploader_key" not in st.session_state:
         st.session_state.uploader_key = 0
 
 
+def _clear_upload_pending():
+    for key in (
+        "upload_pending_df",
+        "upload_pending_name",
+        "upload_pending_key",
+        "upload_replace_confirmed",
+    ):
+        st.session_state.pop(key, None)
+
+
 def _dismiss_upload_dialog():
     st.session_state.show_upload_dialog = False
+    _clear_upload_pending()
 
 
-@st.dialog("Upload portfolio CSV", on_dismiss=_dismiss_upload_dialog)
+@st.dialog("Load portfolio from CSV", on_dismiss=_dismiss_upload_dialog)
 def upload_portfolio_dialog():
-    """Modal CSV picker — reads file here so it survives dialog fragment reruns."""
-    st.caption("Semicolon-separated CSV (Symbol;Shares;AvgCost;PurchaseDate;TargetPrice;Currency)")
+    """Import CSV into a named portfolio; confirm when replacing an existing name."""
+    st.caption(
+        "Semicolon-separated CSV (Symbol;Shares;AvgCost;PurchaseDate;TargetPrice;Currency). "
+        "Or build a portfolio manually via **+** and **Add symbol**."
+    )
     uploaded_file = st.file_uploader(
         "Choose file",
         type=["csv"],
         key=f"portfolio_upload_{st.session_state.uploader_key}",
-        label_visibility="collapsed",
     )
 
     if uploaded_file is not None:
         file_key = f"{uploaded_file.name}:{getattr(uploaded_file, 'size', 0)}"
-        if st.session_state.get("upload_dismiss_key") != file_key:
-            cache_key = (
-                f"{st.session_state.uploader_key}:"
-                f"{uploaded_file.name}:"
-                f"{getattr(uploaded_file, 'size', 0)}"
+        if st.session_state.get("upload_pending_key") != file_key:
+            try:
+                st.session_state.upload_pending_df = _read_uploaded_portfolio(uploaded_file)
+                st.session_state.upload_pending_name = os.path.splitext(uploaded_file.name)[0]
+                st.session_state.upload_pending_key = file_key
+                st.session_state.upload_replace_confirmed = False
+            except Exception as e:
+                st.error(f"Could not read CSV: {e}")
+                _clear_upload_pending()
+
+    pending_df = st.session_state.get("upload_pending_df")
+    if pending_df is None:
+        if st.button("Close", use_container_width=True):
+            _dismiss_upload_dialog()
+            st.rerun()
+        return
+
+    default_name = st.session_state.get("upload_pending_name", "Imported portfolio")
+    portfolio_name = st.text_input("Portfolio name", value=default_name)
+
+    user = get_session_user()
+    svc = get_portfolio_service()
+    existing = svc.find_portfolio_by_name(user.id, portfolio_name.strip())
+
+    replace_confirmed = st.session_state.get("upload_replace_confirmed", False)
+    if existing:
+        st.warning(
+            f'**"{existing.name}"** already exists ({len(svc.repo.list_positions(existing.id))} positions). '
+            "Importing will **permanently replace** all holdings in that portfolio."
+        )
+        replace_confirmed = st.checkbox(
+            "I understand — replace this portfolio",
+            value=replace_confirmed,
+            key="upload_replace_confirmed",
+        )
+
+    import_disabled = bool(existing) and not replace_confirmed
+    if st.button("Import CSV", type="primary", disabled=import_disabled, use_container_width=True):
+        try:
+            imported = svc.import_csv_to_portfolio(
+                user.id,
+                portfolio_name.strip(),
+                pending_df,
+                replace_existing=bool(existing),
             )
-            df = _read_uploaded_portfolio(uploaded_file)
-            st.session_state.uploaded_portfolio_cache_key = cache_key
-            st.session_state.uploaded_portfolio_df = df
-            st.session_state.uploaded_portfolio_name = uploaded_file.name
-            st.session_state.upload_dismiss_key = file_key
+            activate_portfolio(imported, refetch_metadata=True)
+            st.session_state.portfolio_table_view = "ROI"
             st.session_state.uploader_key += 1
+            _clear_upload_pending()
             st.session_state.show_upload_dialog = False
             st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            st.error(f"Import failed: {e}")
 
     if st.button("Close", use_container_width=True):
-        st.session_state.show_upload_dialog = False
+        _dismiss_upload_dialog()
         st.rerun()
+
+
+def is_portfolio_more_open() -> bool:
+    return bool(st.session_state.get("portfolio_more_open", False))
 
 
 def render_toolbar_row():
     """
-    Render KPI/actions columns and toolbar buttons.
+    Render portfolio controls and action buttons in one vertically centered row.
 
-    Returns (kpi_col, uploaded_file, refresh_clicked).
+    Returns (placeholder_col, refresh_clicked).
     """
-    kpi_col, actions_col = st.columns([6.2, 1.3], vertical_alignment="center")
-    refresh_clicked = False
+    st.markdown('<div class="portfolio-toolbar-anchor"></div>', unsafe_allow_html=True)
 
-    with actions_col:
-        btn_upload, btn_reset, btn_refresh = st.columns(3, gap="small")
-        with btn_upload:
+    df_port = get_editable_holdings_df()
+    more_open = is_portfolio_more_open()
+
+    if more_open:
+        col_sel, col_up, col_new, col_reload, col_kpis, col_upload, col_refresh, col_more = (
+            st.columns(
+                [1.75, 0.32, 0.32, 0.32, 4.55, 0.38, 0.38, 0.38],
+                gap="small",
+                vertical_alignment="center",
+            )
+        )
+    else:
+        col_sel, col_kpis, col_refresh, col_more = st.columns(
+            [1.85, 6.15, 0.38, 0.38],
+            gap="small",
+            vertical_alignment="center",
+        )
+        col_up = col_new = col_reload = col_upload = None
+
+    render_portfolio_controls(
+        col_sel,
+        col_kpis,
+        df_port,
+        col_up=col_up,
+        col_new=col_new,
+        col_reload=col_reload,
+    )
+
+    if col_upload is not None:
+        with col_upload:
             if st.button(
                 "📁",
-                help="Upload portfolio CSV",
+                help="Load portfolio from CSV file",
                 use_container_width=True,
                 key="open_upload_dialog_btn",
             ):
                 st.session_state.show_upload_dialog = True
                 st.rerun()
-        with btn_reset:
-            show_reset = (
-                st.session_state.get("uploaded_portfolio_df") is not None
-                or get_cli_filename() is not None
-            )
-            if show_reset and st.button(
-                "❌",
-                help="Clear upload & use default portfolio",
-                use_container_width=True,
-            ):
-                st.session_state.uploader_key += 1
-                st.session_state.show_upload_dialog = False
-                clear_session_keys(PORTFOLIO_RESET_KEYS)
-                clear_portfolio_table_widget()
-                st.rerun()
-        with btn_refresh:
-            refresh_clicked = st.button(
-                "🔄",
-                help="Refresh prices & analyst data",
-                use_container_width=True,
-            )
+
+    with col_refresh:
+        refresh_clicked = st.button(
+            "🔄",
+            help="Refresh prices & analyst data",
+            use_container_width=True,
+            key="toolbar_refresh_btn",
+        )
+
+    with col_more:
+        more_label = "⋮"
+        if st.button(
+            more_label,
+            help="Hide extra actions" if more_open else "More portfolio actions",
+            use_container_width=True,
+            key="portfolio_more_btn",
+        ):
+            st.session_state.portfolio_more_open = not more_open
+            st.rerun()
 
     if st.session_state.get("show_upload_dialog"):
         upload_portfolio_dialog()
 
-    return kpi_col, None, refresh_clicked
+    return col_sel, refresh_clicked

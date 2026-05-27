@@ -63,7 +63,16 @@ def get_ticker_ohlc_history(ticker_symbol, period=DETAIL_HISTORY_PERIOD):
 
 
 def _extract_target_from_targets(targets) -> float:
-    if targets is None or getattr(targets, "empty", True) or "current" not in targets.columns:
+    if targets is None:
+        return 0.0
+    # yfinance may return a dict (newer behavior) or a DataFrame (older behavior).
+    if isinstance(targets, dict):
+        for key in ("mean", "median", "current"):
+            val = _coerce_float(targets.get(key), 0.0)
+            if val > 0:
+                return val
+        return 0.0
+    if getattr(targets, "empty", True) or "current" not in targets.columns:
         return 0.0
     try:
         if "mean" in targets.index:
@@ -75,6 +84,24 @@ def _extract_target_from_targets(targets) -> float:
     except Exception:
         return 0.0
     return 0.0
+
+
+def _estimate_dividend_yield_from_history(ticker, last_price: float) -> float:
+    """Fallback dividend yield from trailing 12M cash dividends / latest price."""
+    if last_price <= 0:
+        return 0.0
+    try:
+        div = ticker.dividends
+        if div is None or len(div) == 0:
+            return 0.0
+        div = div.copy()
+        cutoff = pd.Timestamp.now(tz=div.index.tz) - pd.Timedelta(days=365)
+        trailing_sum = float(div[div.index >= cutoff].sum())
+        if trailing_sum <= 0:
+            return 0.0
+        return (trailing_sum / last_price) * 100
+    except Exception:
+        return 0.0
 
 
 def _fetch_ticker_metadata_primary(ticker_symbol):
@@ -104,6 +131,8 @@ def _fetch_ticker_metadata_primary(ticker_symbol):
     fast_div = fi.get("dividendYield", fi.get("yearly_dividend_yield"))
     if fast_div is not None:
         div_yield = normalize_dividend_yield(fast_div)
+    if div_yield <= 0 and last_price > 0:
+        div_yield = _estimate_dividend_yield_from_history(ticker, last_price)
 
     # Analyst target estimate from dedicated endpoint.
     try:
@@ -139,11 +168,7 @@ def _fetch_ticker_metadata_raw(ticker_symbol):
     if not est_target:
         try:
             targets = ticker.get_analyst_price_targets()
-            if targets is not None and not targets.empty and "current" in targets.columns:
-                if "mean" in targets.index:
-                    est_target = float(targets.loc["mean", "current"])
-                elif len(targets) > 0:
-                    est_target = float(targets["current"].iloc[0])
+            est_target = _extract_target_from_targets(targets)
         except Exception:
             pass
 

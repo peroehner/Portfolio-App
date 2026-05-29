@@ -53,9 +53,9 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
 
     div_income = pick["data"].get("Div Income")
     if div_income is None or (isinstance(div_income, float) and pd.isna(div_income)):
-        div_income_line = "Estimate annual income: —"
+        div_income_line = "Estimate annual dividend income: —"
     else:
-        div_income_line = f"Estimate annual income: {float(div_income):,.2f} $"
+        div_income_line = f"Estimate annual dividend income: {float(div_income):,.2f} $"
 
     trailing_pe = _fmt_num(pick["data"].get("Trailing P/E"), 2)
     forward_pe = _fmt_num(pick["data"].get("Forward P/E"), 2)

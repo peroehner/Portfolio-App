@@ -7,6 +7,7 @@ from portfolio_app.analysis.returns import (
     daily_change_pct,
     holding_days_since_purchase,
 )
+from portfolio_app.analysis.valuation_scores import VALUATION_ALL_COLUMNS
 
 
 def build_hist_by_symbol(bulk_close, symbols):
@@ -112,6 +113,8 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
             "Ø CAGR": cagr,
         }
         res.update(trends)
+        for col in VALUATION_ALL_COLUMNS:
+            res[col] = None
         results_temp.append({"data": res, "hist": hist})
 
     return results_temp, total_depot_value, total_depot_cost, total_depot_target

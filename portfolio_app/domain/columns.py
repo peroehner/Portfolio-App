@@ -33,6 +33,16 @@ COLUMN_SOURCES = {
     "Target $": ColumnSource.CALCULATED,
     "∆ Act-Target %": ColumnSource.CALCULATED,
     "∆ Act-Est Target %": ColumnSource.CALCULATED,
+    "Trailing P/E": ColumnSource.ANALYST,
+    "Forward P/E": ColumnSource.ANALYST,
+    "PEG": ColumnSource.ANALYST,
+    "Rev Growth %": ColumnSource.ANALYST,
+    "Op Margin %": ColumnSource.ANALYST,
+    "PEG P-Score": ColumnSource.CALCULATED,
+    "Rev P-Score": ColumnSource.CALCULATED,
+    "Margin P-Score": ColumnSource.CALCULATED,
+    "P-Score": ColumnSource.CALCULATED,
+    "Grade": ColumnSource.CALCULATED,
 }
 
 USER_EDITABLE_COLUMNS = (

@@ -13,6 +13,15 @@ from portfolio_app.config import DETAIL_HISTORY_PERIOD
 from portfolio_app.data.market_data import get_ticker_ohlc_history
 
 
+def _fmt_num(value, decimals=2, suffix=""):
+    try:
+        if value is None or pd.isna(value):
+            return "-"
+        return f"{float(value):.{decimals}f}{suffix}"
+    except Exception:
+        return "-"
+
+
 def build_symbol_export_block(symbol, window_start, window_end, all_results):
     pick = next((item for item in all_results if item["data"]["Symbol"] == symbol), None)
     if not pick:
@@ -42,6 +51,14 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
         f"- {label}: {val:.2f} $\n" for label, val in dynamic_fibs.items()
     )
 
+    trailing_pe = _fmt_num(pick["data"].get("Trailing P/E"), 2)
+    forward_pe = _fmt_num(pick["data"].get("Forward P/E"), 2)
+    peg = _fmt_num(pick["data"].get("PEG"), 2)
+    rev_growth = _fmt_num(pick["data"].get("Rev Growth %"), 1, "%")
+    op_margin = _fmt_num(pick["data"].get("Op Margin %"), 1, "%")
+    p_score = _fmt_num(pick["data"].get("P-Score"), 1)
+    p_grade = pick["data"].get("Grade") or "-"
+
     return f"""[TECHNICAL ANALYSIS EXPORT: {symbol}]
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Analysis window: {window_start} to {window_end}
@@ -49,6 +66,15 @@ Fibonacci anchor: {fib_anchor}
 Current Price: {curr_p:.2f} $
 1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
 Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
+
+Valuation Growth:
+- Trailing P/E: {trailing_pe}
+- Forward P/E: {forward_pe}
+- PEG: {peg}
+- Rev Growth: {rev_growth}
+- Op Margin: {op_margin}
+- P-Score (private portfolio): {p_score}
+- Grade (private portfolio): {p_grade}
 
 Detected Trends:
 {detected_trends_str}

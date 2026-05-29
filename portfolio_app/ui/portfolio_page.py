@@ -18,6 +18,14 @@ from portfolio_app.data.metadata import (
     start_metadata_background_load,
     start_metadata_for_new_symbols,
 )
+from portfolio_app.data.valuation_data import (
+    fetch_portfolio_valuation_parallel,
+    get_symbol_valuation,
+)
+from portfolio_app.data.valuation_metadata import (
+    start_valuation_background_load,
+    start_valuation_for_new_symbols,
+)
 from portfolio_app.services.session_context import (
     consume_refetch_metadata_flag,
     get_analysis_portfolio_key,
@@ -83,10 +91,12 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
     st.session_state.portfolio_symbols = unique_symbols
     if refetch_metadata:
         start_metadata_background_load(unique_symbols)
+        start_valuation_background_load(unique_symbols)
     else:
         new_symbols = set(unique_symbols) - prior_symbols
         if new_symbols:
             start_metadata_for_new_symbols(tuple(sorted(new_symbols)))
+            start_valuation_for_new_symbols(tuple(sorted(new_symbols)))
 
 
 def handle_refresh(refresh_clicked):
@@ -97,6 +107,8 @@ def handle_refresh(refresh_clicked):
     get_exchange_rate.clear()
     get_symbol_metadata.clear()
     fetch_portfolio_metadata_parallel.clear()
+    get_symbol_valuation.clear()
+    fetch_portfolio_valuation_parallel.clear()
     clear_session_keys(REFRESH_CLEAR_KEYS)
     clear_portfolio_table_widget()
     st.rerun()

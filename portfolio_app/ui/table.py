@@ -11,9 +11,16 @@ from portfolio_app.config import (
     TABLE_PERCENT_COLS,
     TABLE_PNL_COLS,
     TABLE_VIEW_COLUMNS,
+    VALUATION_COLS,
+    VALUATION_LATE_COLS,
 )
 from portfolio_app.data.market_data import validate_symbol
 from portfolio_app.data.metadata import portfolio_metadata_progress, prioritize_metadata_symbol
+from portfolio_app.analysis.valuation_scores import build_valuation_legend_sections
+from portfolio_app.data.valuation_metadata import (
+    portfolio_valuation_progress,
+    prioritize_valuation_symbol,
+)
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
 from portfolio_app.ui.toolbar import is_portfolio_more_open
 from portfolio_app.ui.components import get_table_click_modifiers
@@ -121,6 +128,7 @@ def commit_selection_state(rows, summary_df):
         st.session_state.ticker_index = last_row_idx
         st.session_state["fibo_needs_refresh"] = True
         prioritize_metadata_symbol(focus)
+        prioritize_valuation_symbol(focus)
 
 
 def _raw_selection_rows(table_key: str, event_state=None) -> list[int]:
@@ -283,6 +291,8 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
         if editable:
             cur_kw["disabled"] = "Currency" not in ROI_EDITABLE_COLUMNS
         config["Currency"] = st.column_config.SelectboxColumn("Currency", **cur_kw)
+    if "Grade" in columns:
+        config["Grade"] = st.column_config.TextColumn("Grade", width="small")
 
     editable_numeric = set(ROI_EDITABLE_COLUMNS) if editable else set()
     for col, fmt in TABLE_NUMBER_COLUMN_FORMAT.items():
@@ -442,7 +452,7 @@ def render_portfolio_table_readonly(
     format_dict = get_table_format_dict(cols)
     actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
 
-    skip_fillna = METADATA_COLS | METADATA_LATE_COLS
+    skip_fillna = METADATA_COLS | METADATA_LATE_COLS | VALUATION_COLS | VALUATION_LATE_COLS
     fill_cols = [
         c for c in TABLE_PERCENT_COLS + ["Div Yield"]
         if c in display_df.columns and c not in skip_fillna
@@ -450,13 +460,18 @@ def render_portfolio_table_readonly(
     if fill_cols:
         display_df[fill_cols] = display_df[fill_cols].fillna(0)
 
+    pscore_cols = [
+        c
+        for c in ("PEG P-Score", "Rev P-Score", "Margin P-Score", "P-Score")
+        if c in display_df.columns
+    ]
     gradient_cols = [
         c
         for c in TABLE_PERCENT_COLS
         if c in display_df.columns
         and c in actual_format_dict
         and c not in TABLE_GRADIENT_EXCLUDE
-    ] + [c for c in TABLE_PNL_COLS if c in display_df.columns]
+    ] + [c for c in TABLE_PNL_COLS if c in display_df.columns] + pscore_cols
     styled = display_df.style.format(actual_format_dict, na_rep="-").set_properties(
         **{"background-color": "white", "color": "black"}
     )
@@ -637,6 +652,7 @@ def render_portfolio_table_section():
         prepare_table_selection_before_render(selection_df)
 
     portfolio_metadata_progress()
+    portfolio_valuation_progress()
 
     has_holdings = holdings_df is not None and not holdings_df.empty
 
@@ -684,9 +700,23 @@ def render_portfolio_table_section():
             summary_df, view_name, selection_df, table_key="portfolio_table"
         )
     else:
-        st.caption("Load symbols to see Standard and Trends views.")
+        st.caption("Load symbols to see analysis views (Standard, Trends, Valuation Growth).")
 
-    if view_name != "ROI":
+    if view_name == "Valuation Growth":
+        results = st.session_state.get("all_results") or []
+        headline, detail_lines, holding_lines = build_valuation_legend_sections(
+            results,
+            portfolio_name=active.name,
+            valuation_loaded=bool(st.session_state.get("valuation_loaded")),
+            selected_symbols=st.session_state.get("selected_symbols") or [],
+        )
+        st.caption(headline)
+        with st.expander("P-Score values — all holdings", expanded=False):
+            if holding_lines:
+                st.code("\n".join(holding_lines), language=None)
+            for line in detail_lines:
+                st.caption(line)
+    elif view_name != "ROI":
         st.caption(
             "Click = single row · **Shift+click** = range · **Alt/Option+click** = toggle row · "
             "uncheck = remove"

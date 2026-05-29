@@ -4,6 +4,10 @@ from typing import List, Optional
 
 import pandas as pd
 
+from portfolio_app.data.portfolio_loader import (
+    coerce_portfolio_numeric_columns,
+    merge_duplicate_symbol_rows,
+)
 from portfolio_app.domain.models import Portfolio, Position, User
 from portfolio_app.storage.database import get_connection, init_database
 
@@ -346,12 +350,13 @@ class PortfolioRepository:
         out = out.dropna(subset=["Symbol"])
         out["Symbol"] = out["Symbol"].astype(str).str.strip().str.upper()
         out = out[out["Symbol"] != ""]
-        out = out.drop_duplicates(subset=["Symbol"], keep="last")
+        out = coerce_portfolio_numeric_columns(out)
         out["Shares"] = pd.to_numeric(out["Shares"], errors="coerce").fillna(0)
         out["AvgCost"] = pd.to_numeric(out["AvgCost"], errors="coerce").fillna(0)
         out["TargetPrice"] = pd.to_numeric(out["TargetPrice"], errors="coerce").fillna(0)
         out["Currency"] = out["Currency"].fillna("USD").astype(str).str.strip().str.upper()
         out["PurchaseDate"] = pd.to_datetime(out["PurchaseDate"], errors="coerce")
+        out = merge_duplicate_symbol_rows(out)
         if out.empty and not allow_empty:
             raise ValueError("Portfolio must contain at least one position.")
         return out.reset_index(drop=True)

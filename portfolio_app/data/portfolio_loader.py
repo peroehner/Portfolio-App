@@ -17,6 +17,79 @@ PORTFOLIO_CSV_COLUMNS = (
     "Currency",
 )
 
+_NUMERIC_CSV_COLUMNS = ("Shares", "AvgCost", "TargetPrice")
+
+
+def parse_locale_number(value, *, allow_dot_thousands: bool = False) -> float:
+    """
+    Parse numbers from portfolio CSV (US or European formats).
+
+    When allow_dot_thousands is True (Shares only), 1.500 → 1500.
+    Prices (AvgCost, TargetPrice) always treat a single dot as decimal (198.380 → 198.38).
+    """
+    if value is None:
+        return float("nan")
+    if isinstance(value, float) and pd.isna(value):
+        return float("nan")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+
+    s = str(value).strip().replace("\u00a0", "").replace(" ", "")
+    if not s:
+        return float("nan")
+
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        left, _, right = s.partition(",")
+        if (
+            allow_dot_thousands
+            and right.isdigit()
+            and len(right) == 3
+            and left.isdigit()
+        ):
+            s = left + right
+        else:
+            s = left + "." + right
+    elif "." in s:
+        parts = s.split(".")
+        if len(parts) > 2 and all(part.isdigit() for part in parts):
+            s = "".join(parts)
+        elif (
+            allow_dot_thousands
+            and len(parts) == 2
+            and parts[0].isdigit()
+            and parts[1].isdigit()
+            and len(parts[1]) == 3
+        ):
+            s = parts[0] + parts[1]
+
+    try:
+        return float(s)
+    except ValueError:
+        return float("nan")
+
+
+def parse_shares_number(value) -> float:
+    return parse_locale_number(value, allow_dot_thousands=True)
+
+
+def parse_price_number(value) -> float:
+    return parse_locale_number(value, allow_dot_thousands=False)
+
+
+def coerce_portfolio_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "Shares" in out.columns:
+        out["Shares"] = out["Shares"].map(parse_shares_number)
+    for col in ("AvgCost", "TargetPrice"):
+        if col in out.columns:
+            out[col] = out[col].map(parse_price_number)
+    return out
+
 
 def get_cli_filename():
     """Extract filename if passed via '-f <filename>' on the command line."""
@@ -37,14 +110,72 @@ def get_cli_filename():
     return None
 
 
-def _parse_portfolio_df(df):
-    df = df.copy()
-    df["PurchaseDate"] = pd.to_datetime(df["PurchaseDate"])
+def _read_portfolio_csv(source) -> pd.DataFrame:
+    """Read semicolon CSV without losing European thousands (e.g. 1.500 → 1500)."""
+    df = pd.read_csv(
+        source,
+        sep=";",
+        dtype=str,
+        keep_default_na=False,
+    )
+    if df.empty or len(df.columns) == 0:
+        raise ValueError("CSV is empty or has no columns")
     return df
 
 
+def _parse_portfolio_df(df):
+    df = df.copy()
+    df = coerce_portfolio_numeric_columns(df)
+    df["PurchaseDate"] = pd.to_datetime(df["PurchaseDate"], errors="coerce")
+    if "Symbol" in df.columns:
+        df["Symbol"] = df["Symbol"].astype(str).str.strip().str.upper()
+        df = df[df["Symbol"] != ""]
+    df = merge_duplicate_symbol_rows(df)
+    return df
+
+
+def merge_duplicate_symbol_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge multiple rows for the same Symbol into one holding.
+
+    Shares are summed. AvgCost and TargetPrice use a share-weighted average.
+    PurchaseDate is the earliest non-null date. Currency follows the largest lot.
+    """
+    if df.empty or not df["Symbol"].duplicated().any():
+        return df
+
+    merged_rows = []
+    for symbol, group in df.groupby("Symbol", sort=False):
+        shares = group["Shares"].astype(float)
+        total_shares = float(shares.sum())
+        if total_shares > 0:
+            avg_cost = float((shares * group["AvgCost"]).sum() / total_shares)
+            target_price = float((shares * group["TargetPrice"]).sum() / total_shares)
+            currency = str(group.loc[shares.idxmax(), "Currency"])
+        else:
+            avg_cost = float(group["AvgCost"].mean())
+            target_price = float(group["TargetPrice"].mean())
+            currency = str(group["Currency"].iloc[0])
+
+        valid_dates = group["PurchaseDate"][pd.notna(group["PurchaseDate"])]
+        purchase_date = valid_dates.min() if not valid_dates.empty else pd.NaT
+
+        merged_rows.append(
+            {
+                "Symbol": symbol,
+                "Shares": total_shares,
+                "AvgCost": avg_cost,
+                "PurchaseDate": purchase_date,
+                "TargetPrice": target_price,
+                "Currency": currency,
+            }
+        )
+
+    return pd.DataFrame(merged_rows, columns=list(PORTFOLIO_CSV_COLUMNS))
+
+
 def load_portfolio_from_path(path):
-    df = _parse_portfolio_df(pd.read_csv(path, sep=";"))
+    df = _parse_portfolio_df(_read_portfolio_csv(path))
     return df, os.path.basename(path)
 
 
@@ -91,10 +222,7 @@ def _read_uploaded_portfolio(uploaded_file):
     """Read uploaded CSV; Streamlit files must be rewound on each rerun."""
     if hasattr(uploaded_file, "seek"):
         uploaded_file.seek(0)
-    df = pd.read_csv(uploaded_file, sep=";")
-    if df.empty or len(df.columns) == 0:
-        raise ValueError("CSV is empty or has no columns")
-    return _parse_portfolio_df(df)
+    return _parse_portfolio_df(_read_portfolio_csv(uploaded_file))
 
 
 def load_portfolio(uploaded_file):

@@ -28,6 +28,7 @@ COLUMN_SOURCES = {
     "Upside %": ColumnSource.CALCULATED,
     "📈 Total %": ColumnSource.CALCULATED,
     "Total $": ColumnSource.CALCULATED,
+    "Div Income": ColumnSource.CALCULATED,
     "Ø CAGR": ColumnSource.CALCULATED,
     "Target %": ColumnSource.CALCULATED,
     "Target $": ColumnSource.CALCULATED,

@@ -33,6 +33,7 @@ def _kpi_strip_html(
     value: float,
     cost: float,
     target: float,
+    div_income: float,
 ) -> str:
     """Single-row KPI bar: label · amount · optional % vs cost (matches toolbar mockup)."""
     value_pct = _kpi_pct_vs_cost_html(value, cost)
@@ -42,6 +43,7 @@ def _kpi_strip_html(
         ("Value", f"${value:,.0f}", value_pct),
         ("Cost", f"${cost:,.0f}", ""),
         ("Target", f"${target:,.0f}", target_pct),
+        ("Div Income", f"${div_income:,.0f}", ""),
     )
     parts = ['<div class="kpi-strip kpi-strip-toolbar">']
     for label, amount, pct in items:
@@ -137,6 +139,7 @@ def render_portfolio_controls(
     value = st.session_state.get("total_depot_value", 0)
     cost = st.session_state.get("total_depot_cost", 0)
     target = st.session_state.get("total_depot_target", 0)
+    div_income = st.session_state.get("total_depot_div_income", 0)
 
     with col_sel:
         if options:
@@ -224,6 +227,7 @@ def render_portfolio_controls(
                 value=value,
                 cost=cost,
                 target=target,
+                div_income=div_income,
             ),
             unsafe_allow_html=True,
         )

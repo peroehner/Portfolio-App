@@ -32,7 +32,6 @@ from portfolio_app.ui.holdings import (
     append_symbol_to_draft,
     clear_holdings_draft,
     display_df_to_holdings,
-    enrich_summary_with_currency,
     get_editable_holdings_df,
     holdings_to_roi_display_df,
     merge_holdings_into_roi_display,
@@ -329,11 +328,6 @@ def get_table_format_dict(columns):
 
 def _view_columns(view_name, summary_df):
     cols = [c for c in TABLE_VIEW_COLUMNS[view_name] if c in summary_df.columns]
-    if view_name == "ROI" and "Currency" not in cols:
-        if "Cost/Share" in cols:
-            cols.insert(cols.index("Cost/Share") + 1, "Currency")
-        else:
-            cols.append("Currency")
     if "Symbol" in summary_df.columns and "Symbol" not in cols:
         cols = ["Symbol"] + cols
     return cols
@@ -500,7 +494,7 @@ def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:
     if summary_df is not None and not summary_df.empty:
         cols = _view_columns(view_name, summary_df)
         base_cols = [c for c in cols if c in summary_df.columns]
-        display_df = enrich_summary_with_currency(summary_df[base_cols], holdings_df)
+        display_df = summary_df[base_cols].copy()
     else:
         display_df = holdings_to_roi_display_df(holdings_df)
         cols = _view_columns(view_name, display_df)

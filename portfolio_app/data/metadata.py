@@ -8,6 +8,8 @@ from portfolio_app.config import (
     METADATA_BATCH_SIZE,
     METADATA_POLL_SECONDS,
 )
+from portfolio_app.analysis.portfolio_build import compute_total_depot_div_income
+from portfolio_app.analysis.returns import compute_annual_div_income
 from portfolio_app.data.market_data import get_symbol_metadata
 from portfolio_app.session_keys import clear_portfolio_table_widget
 
@@ -23,6 +25,8 @@ def apply_metadata_to_item(item, est_target, pct_change, div_yield):
         item["data"]["∆ Act-Est Target %"] = ((price - est_target) / price * 100)
     else:
         item["data"]["∆ Act-Est Target %"] = None
+    shares = item["data"].get("Shares")
+    item["data"]["Div Income"] = compute_annual_div_income(shares, price, div_yield)
 
 
 def enrich_results_with_metadata(all_results, metadata_map):
@@ -33,6 +37,7 @@ def enrich_results_with_metadata(all_results, metadata_map):
             continue
         apply_metadata_to_item(item, *metadata_map[symbol])
     st.session_state.enriched_symbols = set(metadata_map.keys())
+    st.session_state.total_depot_div_income = compute_total_depot_div_income(all_results)
 
 
 def enrich_symbol_metadata(all_results, symbol):
@@ -44,6 +49,7 @@ def enrich_symbol_metadata(all_results, symbol):
     if "enriched_symbols" not in st.session_state:
         st.session_state.enriched_symbols = set()
     st.session_state.enriched_symbols.add(symbol)
+    st.session_state.total_depot_div_income = compute_total_depot_div_income(all_results)
 
 
 def metadata_map_from_results(all_results):

@@ -2,6 +2,7 @@
 import pandas as pd
 
 from portfolio_app.analysis.returns import (
+    compute_annual_div_income,
     compute_position_cagr,
     compute_trend_returns,
     daily_change_pct,
@@ -22,12 +23,30 @@ def build_hist_by_symbol(bulk_close, symbols):
     return hist_by_symbol
 
 
+def compute_total_depot_div_income(all_results) -> float:
+    """Sum per-position Div Income across loaded portfolio rows."""
+    total = 0.0
+    for item in all_results:
+        div = item["data"].get("Div Income")
+        if div is None:
+            continue
+        try:
+            value = float(div)
+        except (TypeError, ValueError):
+            continue
+        if pd.isna(value):
+            continue
+        total += value
+    return total
+
+
 def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map=None):
     """Build depot rows from pre-fetched prices only (no per-row API calls)."""
     results_temp = []
     total_depot_value = 0.0
     total_depot_cost = 0.0
     total_depot_target = 0.0
+    total_depot_div_income = 0.0
 
     for _, row in df_port.iterrows():
         symbol = row["Symbol"]
@@ -91,6 +110,12 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
             cagr = None
             trends = {"5D": None, "1M": None, "6M": None, "12M": None}
 
+        div_income = None
+        if has_price and price:
+            div_income = compute_annual_div_income(current_shares, price, div_yield)
+        if div_income is not None:
+            total_depot_div_income += div_income
+
         res = {
             "Symbol": symbol,
             "🌐 Price": price,
@@ -110,6 +135,7 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
             "Target $": diff_target_abs,
             "📈 Total %": total_pct,
             "Total $": total_dollar,
+            "Div Income": div_income,
             "Ø CAGR": cagr,
         }
         res.update(trends)
@@ -117,4 +143,10 @@ def build_portfolio_results(df_port, hist_by_symbol, eur_rate=None, metadata_map
             res[col] = None
         results_temp.append({"data": res, "hist": hist})
 
-    return results_temp, total_depot_value, total_depot_cost, total_depot_target
+    return (
+        results_temp,
+        total_depot_value,
+        total_depot_cost,
+        total_depot_target,
+        total_depot_div_income,
+    )

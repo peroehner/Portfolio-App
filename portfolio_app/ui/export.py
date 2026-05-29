@@ -51,6 +51,12 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
         f"- {label}: {val:.2f} $\n" for label, val in dynamic_fibs.items()
     )
 
+    div_income = pick["data"].get("Div Income")
+    if div_income is None or (isinstance(div_income, float) and pd.isna(div_income)):
+        div_income_line = "Estimate annual income: —"
+    else:
+        div_income_line = f"Estimate annual income: {float(div_income):,.2f} $"
+
     trailing_pe = _fmt_num(pick["data"].get("Trailing P/E"), 2)
     forward_pe = _fmt_num(pick["data"].get("Forward P/E"), 2)
     peg = _fmt_num(pick["data"].get("PEG"), 2)
@@ -66,6 +72,7 @@ Fibonacci anchor: {fib_anchor}
 Current Price: {curr_p:.2f} $
 1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
 Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
+{div_income_line}
 
 Valuation Growth:
 - Trailing P/E: {trailing_pe}

@@ -46,6 +46,7 @@ def _clear_analysis_session():
     st.session_state.total_depot_value = 0.0
     st.session_state.total_depot_cost = 0.0
     st.session_state.total_depot_target = 0.0
+    st.session_state.total_depot_div_income = 0.0
     st.session_state.portfolio_symbols = tuple()
     st.session_state.ticker_liste = []
     st.session_state.selected_symbols = []
@@ -71,14 +72,19 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
         bulk_close = fetch_bulk_close(unique_symbols, TABLE_HISTORY_PERIOD)
         hist_by_symbol = build_hist_by_symbol(bulk_close, unique_symbols)
 
-    results_temp, total_depot_value, total_depot_cost, total_depot_target = (
-        build_portfolio_results(df_port, hist_by_symbol, eur_rate, metadata_map=metadata_map)
-    )
+    (
+        results_temp,
+        total_depot_value,
+        total_depot_cost,
+        total_depot_target,
+        total_depot_div_income,
+    ) = build_portfolio_results(df_port, hist_by_symbol, eur_rate, metadata_map=metadata_map)
 
     st.session_state.all_results = results_temp
     st.session_state.total_depot_value = total_depot_value
     st.session_state.total_depot_cost = total_depot_cost
     st.session_state.total_depot_target = total_depot_target
+    st.session_state.total_depot_div_income = total_depot_div_income
     st.session_state.ticker_liste = [x["data"]["Symbol"] for x in results_temp]
     if results_temp:
         first_symbol = results_temp[0]["data"]["Symbol"]

@@ -18,7 +18,6 @@ ROI_EDITABLE_COLUMNS = (
     "PurchaseDate",
     "Cost/Share",
     "📈 Target",
-    "Currency",
 )
 
 
@@ -69,9 +68,9 @@ def holdings_to_roi_display_df(holdings_df: pd.DataFrame) -> pd.DataFrame:
             "Shares": row["Shares"],
             "PurchaseDate": purchase_label,
             "Cost/Share": cost,
-            "Currency": row.get("Currency", "USD"),
             "📈 Total %": None,
             "Total $": None,
+            "Div Income": None,
             "Ø CAGR": None,
             "📈 Target": target,
             "∆ Act-Target %": None,
@@ -152,10 +151,6 @@ def validate_roi_editor_df(edited_df: pd.DataFrame) -> list[str]:
             if num < 0:
                 errors.append(f"{symbol}: {label} cannot be negative.")
 
-        currency = str(row.get("Currency", "USD")).strip().upper()
-        if currency not in ("USD", "EUR"):
-            errors.append(f'{symbol}: Currency must be USD or EUR.')
-
         purchase = row.get("PurchaseDate")
         if purchase is not None and not (isinstance(purchase, float) and pd.isna(purchase)):
             try:
@@ -196,18 +191,12 @@ def merge_holdings_into_roi_display(
 
 
 def display_df_to_holdings(edited_df: pd.DataFrame) -> pd.DataFrame:
-    """Map ROI table columns back to SQLite holdings schema."""
-    needs_eur = edited_df["Currency"].astype(str).str.upper().eq("EUR").any()
-    eur_rate = get_exchange_rate() if needs_eur else None
-
+    """Map ROI table columns back to SQLite holdings schema (USD values from ROI view)."""
     rows = []
     for _, row in edited_df.iterrows():
         symbol = str(row["Symbol"]).strip().upper()
         if not symbol:
             continue
-        currency = str(row.get("Currency", "USD")).strip().upper()
-        if currency not in ("USD", "EUR"):
-            currency = "USD"
 
         shares = _parse_required_float(row.get("Shares"), field_label="Shares", symbol=symbol)
         avg_cost = _parse_required_float(
@@ -216,9 +205,6 @@ def display_df_to_holdings(edited_df: pd.DataFrame) -> pd.DataFrame:
         target = _parse_required_float(
             row.get("📈 Target"), field_label="Target", symbol=symbol
         )
-        if currency == "EUR" and eur_rate:
-            avg_cost *= eur_rate
-            target *= eur_rate
 
         purchase = row.get("PurchaseDate")
         if purchase is None or (isinstance(purchase, float) and pd.isna(purchase)):
@@ -236,7 +222,7 @@ def display_df_to_holdings(edited_df: pd.DataFrame) -> pd.DataFrame:
             "AvgCost": avg_cost,
             "PurchaseDate": purchase_dt,
             "TargetPrice": target,
-            "Currency": currency,
+            "Currency": "USD",
         })
 
     if not rows:

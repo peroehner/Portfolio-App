@@ -45,9 +45,9 @@ TABLE_VIEW_COLUMNS = {
         "Symbol", "🌐 Price", "Change %", "5D", "1M", "6M", "12M",
     ],
     "ROI": [
-        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share", "Currency",
-        "📈 Total %", "Total $", "Ø CAGR", "📈 Target", "∆ Act-Target %", "Est Target",
-        "∆ Act-Est Target %",
+        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
+        "📈 Total %", "Total $", "Div Income", "Ø CAGR", "📈 Target",
+        "∆ Act-Target %", "Est Target", "∆ Act-Est Target %",
     ],
     "Valuation Growth": [
         "Symbol", "🌐 Price", "Change %",
@@ -65,7 +65,7 @@ TABLE_PERCENT_COLS = [
     "Rev Growth %", "Op Margin %",
 ]
 TABLE_CURRENCY_COLS = [
-    "📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price",
+    "📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price", "Div Income",
 ]
 TABLE_PNL_COLS = ["Total $"]
 TABLE_GRADIENT_EXCLUDE = {"Div Yield"}
@@ -87,6 +87,7 @@ TABLE_NUMBER_COLUMN_FORMAT = {
     "∆ Act-Target %": "%.2f%%",
     "∆ Act-Est Target %": "%.2f%%",
     "Div Yield": "%.1f%%",
+    "Div Income": "$%.2f",
     "5D": "%.2f%%",
     "1M": "%.2f%%",
     "6M": "%.2f%%",

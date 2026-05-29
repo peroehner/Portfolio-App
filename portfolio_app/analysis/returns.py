@@ -12,6 +12,7 @@ MAX_CAGR_MAGNITUDE = 9_999.99
 __all__ = [
     "METADATA_COLS",
     "MIN_DAYS_FOR_CAGR",
+    "compute_annual_div_income",
     "compute_position_cagr",
     "compute_trend_returns",
     "daily_change_pct",
@@ -30,6 +31,25 @@ def normalize_dividend_yield(div_yield):
     if div_yield < 1:
         return div_yield * 100
     return div_yield
+
+
+def compute_annual_div_income(shares, price, div_yield_pct) -> float | None:
+    """
+    Estimated annual dividend income (USD): shares × price × (div yield % / 100).
+    """
+    if shares is None or price is None or div_yield_pct is None:
+        return None
+    try:
+        s = float(shares)
+        p = float(price)
+        y = float(div_yield_pct)
+    except (TypeError, ValueError):
+        return None
+    if s <= 0 or p <= 0 or y <= 0:
+        return None
+    if not all(math.isfinite(v) for v in (s, p, y)):
+        return None
+    return s * p * (y / 100.0)
 
 
 def extract_dividend_yield(info):

@@ -1,4 +1,4 @@
-# Pero Portfolio & Trend Analyzer
+# Personal Portfolio Screener
 
 Streamlit app for portfolio overview, trend detection, Fibonacci levels, and technical export.
 

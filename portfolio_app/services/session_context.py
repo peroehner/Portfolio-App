@@ -144,6 +144,10 @@ def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True
     st.session_state.pop("selected_symbols", None)
     st.session_state.pop("table_sel_rows", None)
     st.session_state.pop("ticker_index", None)
+    st.session_state.pop("ta_nav_index", None)
+    st.session_state.pop("ta_chart_symbol", None)
+    st.session_state.pop("_ta_selection_key", None)
+    st.session_state.pop("_ta_nav_symbols", None)
     _reset_portfolio_display_state()
     invalidate_analysis(refetch_metadata=refetch_metadata)
 

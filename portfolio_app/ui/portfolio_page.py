@@ -160,5 +160,3 @@ def render_portfolio_page(df_port, portfolio_name, refresh_clicked):
         )
 
     render_portfolio_table_section()
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)

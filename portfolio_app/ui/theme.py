@@ -24,71 +24,64 @@ APP_CSS = """
         width: auto;
         object-fit: contain;
     }
+    .app-headings {
+        min-width: 0;
+    }
     .app-title {
-        font-size: 1.05rem;
-        font-weight: 700;
-        color: #111;
+        font-size: 1.35rem;
+        font-weight: 1000;
+        color: #111827;
         margin: 0;
         padding: 0;
         line-height: 1.2;
+        letter-spacing: -0.01em;
     }
-    .app-title .app-muted {
-        font-weight: 500;
-        color: #666;
-        font-size: 0.9rem;
+    .app-subtitle {
+        margin: 0.2rem 0 0 0;
     }
-    .header-account-label {
+    .panel-account-label {
         font-size: 0.7rem;
         font-weight: 600;
         color: #666;
         margin: 0;
-        padding-right: 0.35rem;
+        padding-right: 0.25rem;
         line-height: 1.2;
         letter-spacing: 0.02em;
         white-space: nowrap;
         text-align: right;
     }
-    div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+    div:has(> .section-header-row-anchor) + div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        margin-bottom: 0.35rem !important;
+    }
+    div:has(> .section-header-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:last-child {
         display: flex !important;
         align-items: center !important;
         justify-content: flex-end !important;
-        overflow: visible !important;
     }
-    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] {
+    div:has(> .panel-account-anchor) + div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
         justify-content: flex-end !important;
-        gap: 0.55rem !important;
+        gap: 0.45rem !important;
         width: 100% !important;
-        overflow: visible !important;
     }
-    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
-        flex: 0 0 auto !important;
-        width: auto !important;
-        min-width: 4.5rem !important;
-        max-width: none !important;
-        overflow: visible !important;
+    div:has(> .panel-account-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        flex: 1 1 8rem !important;
+        min-width: 7rem !important;
+        max-width: 11rem !important;
     }
-    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
-        flex: 1 1 8.5rem !important;
-        min-width: 7.5rem !important;
-        max-width: 10.5rem !important;
-        margin-left: 0 !important;
-    }
-    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox {
+    div:has(> .panel-account-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox {
         width: 100% !important;
         margin: 0 !important;
     }
-    div:has(> .header-account-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
+    div:has(> .panel-account-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
         min-height: 2rem !important;
         height: 2rem !important;
     }
-    div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child [data-testid="stTextInput"] {
-        width: 100%;
-        max-width: 10.5rem;
-    }
-    div:has(> .header-account-label) [data-testid="stTextInput"] input {
+    div:has(> .panel-account-label) [data-testid="stTextInput"] input {
         font-size: 0.85rem;
         padding: 0.25rem 0.5rem;
     }
@@ -96,6 +89,194 @@ APP_CSS = """
         border: none;
         border-top: 1px solid #e8ecf0;
         margin: 0.35rem 0 0.45rem 0;
+    }
+    /* Section panels (bordered containers) */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) {
+        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+        border-left: 4px solid #2563eb !important;
+        margin-bottom: 0.35rem;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
+        background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
+        border-left: 4px solid #0d9488 !important;
+        margin-top: 0.45rem;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
+        padding-top: 0.15rem;
+    }
+    .section-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        margin: 0.1rem 0 0.45rem 0;
+    }
+    .section-number {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.55rem;
+        height: 1.55rem;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) .section-number {
+        background: #2563eb;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) .section-number {
+        background: #0d9488;
+    }
+    .section-headings {
+        min-width: 0;
+    }
+    .section-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.2;
+    }
+    .section-subtitle {
+        margin: 0.12rem 0 0 0;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
+        line-height: 1.35;
+    }
+    /* Technical Analysis symbol bar row (list frame + export) */
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"] {
+        align-items: stretch !important;
+        margin-bottom: 0.15rem !important;
+        gap: 0.45rem !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child {
+        background: linear-gradient(180deg, #ecfdf5 0%, #f8fffe 100%) !important;
+        border: 1px solid #99f6e4 !important;
+        border-left: 4px solid #14b8a6 !important;
+        border-radius: 8px !important;
+        padding: 0.35rem 0.5rem !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        gap: 0.3rem !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"] {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child .stButton > button {
+        background: #ffffff !important;
+        border: 1px solid #14b8a6 !important;
+        color: #0f766e !important;
+        min-height: 2rem !important;
+        height: 2rem !important;
+        padding: 0.12rem 0.55rem !important;
+        border-radius: 999px !important;
+        box-shadow: 0 1px 2px rgba(15, 118, 110, 0.12) !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child .stButton > button p {
+        color: #0f766e !important;
+        font-weight: 700 !important;
+        font-size: 0.82rem !important;
+        line-height: 1.2 !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child .stButton > button:hover {
+        background: #f0fdfa !important;
+        border-color: #0d9488 !important;
+        color: #115e59 !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:first-child .stButton > button:hover p {
+        color: #115e59 !important;
+    }
+    .ta-sym-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 2rem;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #0f766e;
+        background: #ffffff;
+        border: 1px solid #14b8a6;
+        box-shadow: 0 1px 2px rgba(15, 118, 110, 0.12);
+        white-space: nowrap;
+    }
+    .ta-sym-chip-active {
+        font-size: 0.92rem;
+        font-weight: 900;
+        border-width: 2px;
+        letter-spacing: 0.02em;
+        box-shadow: 0 1px 3px rgba(15, 118, 110, 0.18);
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:last-child {
+        display: flex !important;
+        align-items: center !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:last-child [data-testid="stDownloadButton"] button {
+        background: #ecfdf5 !important;
+        border: 1px solid #99f6e4 !important;
+        color: #0f766e !important;
+        font-weight: 700 !important;
+        min-height: 2rem !important;
+        border-radius: 8px !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:last-child [data-testid="stDownloadButton"] button:hover:not(:disabled) {
+        background: #d1fae5 !important;
+        border-color: #14b8a6 !important;
+    }
+    div:has(> .ta-symbol-nav-row-anchor) + div[data-testid="stHorizontalBlock"]
+        > div[data-testid="column"]:last-child [data-testid="stDownloadButton"] button:disabled {
+        opacity: 0.5 !important;
+    }
+    .ta-sym-ellipsis {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        color: #94a3b8;
+        font-size: 1rem;
+        font-weight: 700;
+        user-select: none;
+    }
+    .section-empty-state {
+        margin: 0.35rem 0 0.5rem 0;
+        padding: 1rem 0.85rem;
+        border-radius: 8px;
+        border: 1px dashed #cbd5e1;
+        background: rgba(255, 255, 255, 0.72);
+        text-align: center;
+    }
+    .section-empty-title {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #334155;
+    }
+    .section-empty-body {
+        margin: 0.35rem 0 0 0;
+        font-size: 0.78rem;
+        color: #64748b;
+        line-height: 1.45;
     }
     .tech-header {
         font-size: 0.95rem;

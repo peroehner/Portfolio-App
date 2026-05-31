@@ -1,4 +1,4 @@
-"""User identity (email) — shown in the app header."""
+"""User identity (email) — account selector in the portfolio panel."""
 import re
 
 import streamlit as st
@@ -27,7 +27,7 @@ def _switch_session_user(email: str):
 
 
 def render_account_in_header():
-    """Compact user switcher + manual email entry in the title row."""
+    """Compact user switcher + manual email entry in the portfolio panel."""
     current_email = get_session_email()
     known_users = list_session_users()
     emails = [u.email for u in known_users]

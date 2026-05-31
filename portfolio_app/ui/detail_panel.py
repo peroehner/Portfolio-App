@@ -13,16 +13,144 @@ from portfolio_app.ui.export import build_multi_export_datasets
 from portfolio_app.ui.components import mark_preserve_table_selection
 
 
-def _sync_ticker_selection(ticker_liste):
-    if st.session_state.get("selected_symbol") not in ticker_liste:
-        st.session_state.selected_symbol = ticker_liste[0]
-        st.session_state.ticker_index = 0
-    elif (
-        "ticker_index" not in st.session_state
-        or st.session_state.ticker_index >= len(ticker_liste)
-    ):
-        st.session_state.ticker_index = ticker_liste.index(
-            st.session_state.selected_symbol
+def _analysis_symbols() -> list[str]:
+    """Symbols to browse in Technical Analysis (table selection, else portfolio list)."""
+    selected = [s for s in (st.session_state.get("selected_symbols") or []) if s]
+    if selected:
+        return selected
+    focus = st.session_state.get("selected_symbol")
+    ticker_liste = st.session_state.get("ticker_liste") or []
+    if focus and focus in ticker_liste:
+        return [focus]
+    return list(ticker_liste)
+
+
+def _sync_ta_chart_symbol(symbols: list[str]) -> str:
+    """Keep chart symbol in sync with table selection; preserve nav index when possible."""
+    if not symbols:
+        return ""
+    selection_key = tuple(symbols)
+    if st.session_state.get("_ta_selection_key") != selection_key:
+        st.session_state["_ta_selection_key"] = selection_key
+        focus = st.session_state.get("selected_symbol")
+        st.session_state.ta_nav_index = symbols.index(focus) if focus in symbols else 0
+    idx = int(st.session_state.get("ta_nav_index", 0))
+    idx = max(0, min(idx, len(symbols) - 1))
+    st.session_state.ta_nav_index = idx
+    sym = symbols[idx]
+    st.session_state.ta_chart_symbol = sym
+    return sym
+
+
+def _symbol_window(symbols: list[str], index: int, *, window: int = 7) -> tuple[int, int]:
+    half = window // 2
+    start = max(0, index - half)
+    end = min(len(symbols), start + window)
+    start = max(0, end - window)
+    return start, end
+
+
+def _ta_select_symbol(idx: int) -> None:
+    symbols = st.session_state.get("_ta_nav_symbols") or []
+    if 0 <= idx < len(symbols):
+        st.session_state.ta_nav_index = idx
+        st.session_state.ta_chart_symbol = symbols[idx]
+    mark_preserve_table_selection()
+
+
+def _ta_export_bundle() -> tuple[str, str, str, bool, str]:
+    export_symbols = st.session_state.get("selected_symbols") or []
+    export_window_start = st.session_state.get("sel_start_ui")
+    export_window_end = st.session_state.get("sel_end_ui")
+    export_ready = bool(export_symbols and export_window_start and export_window_end)
+    export_data = ""
+    if export_ready:
+        export_data = build_multi_export_datasets(
+            export_symbols,
+            export_window_start,
+            export_window_end,
+            st.session_state.all_results,
+        )
+    export_label = (
+        f"Export ({len(export_symbols)})"
+        if export_symbols
+        else "Export"
+    )
+    file_name = (
+        f"Analysis_{len(export_symbols)}_symbols_"
+        f"{export_window_start}_{export_window_end}.txt"
+        if export_ready
+        else "Analysis.txt"
+    )
+    help_text = (
+        "Export technical datasets for all selected table rows "
+        f"using the current From–To window ({export_window_start or '—'} → "
+        f"{export_window_end or '—'})."
+    )
+    return export_label, export_data, file_name, export_ready, help_text
+
+
+def _render_symbol_nav_bar(symbols: list[str], index: int) -> None:
+    st.session_state["_ta_nav_symbols"] = symbols
+    export_label, export_data, export_file, export_ready, export_help = _ta_export_bundle()
+    start, end = _symbol_window(symbols, index)
+
+    st.markdown('<div class="ta-symbol-nav-row-anchor"></div>', unsafe_allow_html=True)
+    list_col, export_col = st.columns([5.65, 1.05], gap="small", vertical_alignment="center")
+
+    with list_col:
+        st.markdown('<div class="ta-symbol-list-frame"></div>', unsafe_allow_html=True)
+
+        weights: list[float] = []
+        if start > 0:
+            weights.append(0.2)
+        weights.extend([1.0] * (end - start))
+        if end < len(symbols):
+            weights.append(0.2)
+
+        cols = st.columns(weights, gap="small", vertical_alignment="center")
+        col_i = 0
+
+        if start > 0:
+            with cols[col_i]:
+                st.markdown('<span class="ta-sym-ellipsis">…</span>', unsafe_allow_html=True)
+            col_i += 1
+
+        for i in range(start, end):
+            sym = symbols[i]
+            is_active = i == index
+            with cols[col_i]:
+                if is_active:
+                    st.markdown(
+                        f'<span class="ta-sym-chip ta-sym-chip-active">{sym}</span>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.button(
+                        sym,
+                        key=f"ta_sym_{i}_{sym}",
+                        use_container_width=True,
+                        on_click=_ta_select_symbol,
+                        kwargs={"idx": i},
+                    )
+            col_i += 1
+
+        if end < len(symbols):
+            with cols[col_i]:
+                st.markdown('<span class="ta-sym-ellipsis">…</span>', unsafe_allow_html=True)
+
+    with export_col:
+        st.markdown('<div class="ta-export-outside-anchor"></div>', unsafe_allow_html=True)
+        st.download_button(
+            label=export_label,
+            data=export_data,
+            file_name=export_file,
+            mime="text/plain",
+            use_container_width=True,
+            disabled=not export_ready,
+            key="ta_export_btn",
+            on_click=mark_preserve_table_selection,
+            help=export_help,
         )
 
 
@@ -222,42 +350,6 @@ def _compute_chart_data(hist_full):
 def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
     st.markdown('<div class="tech-sidebar-anchor"></div>', unsafe_allow_html=True)
     curr_p = pick["data"]["🌐 Price"]
-    export_symbols = st.session_state.get("selected_symbols") or []
-    export_window_start = st.session_state.get("sel_start_ui")
-    export_window_end = st.session_state.get("sel_end_ui")
-    export_ready = bool(export_symbols and export_window_start and export_window_end)
-    export_data = ""
-    if export_ready:
-        export_data = build_multi_export_datasets(
-            export_symbols,
-            export_window_start,
-            export_window_end,
-            st.session_state.all_results,
-        )
-    export_label = (
-        f"Export ({len(export_symbols)})"
-        if export_symbols
-        else "Export Datasets"
-    )
-    st.download_button(
-        label=export_label,
-        data=export_data,
-        file_name=(
-            f"Analysis_{len(export_symbols)}_symbols_"
-            f"{export_window_start}_{export_window_end}.txt"
-            if export_ready
-            else "Analysis.txt"
-        ),
-        mime="text/plain",
-        use_container_width=True,
-        disabled=not export_ready,
-        on_click=mark_preserve_table_selection,
-        help=(
-            "Export technical datasets for all selected table rows "
-            f"using the current From–To window ({export_window_start or '—'} → "
-            f"{export_window_end or '—'})."
-        ),
-    )
 
     st.markdown(
         '<p style="font-size:0.82rem;font-weight:700;margin:0.2rem 0 0.15rem 0;">Metrics</p>',
@@ -326,10 +418,37 @@ def render_detail_panel():
     """Chart, Fibonacci, and export for the selected table row."""
     ticker_liste = st.session_state.get("ticker_liste", [])
     if not ticker_liste:
+        st.markdown(
+            """
+            <div class="section-empty-state">
+              <p class="section-empty-title">No symbol to analyze yet</p>
+              <p class="section-empty-body">
+                Add holdings in <strong>Portfolio screener</strong> above, then select table rows
+                and click a symbol chip below to view its chart.
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         return
 
-    _sync_ticker_selection(ticker_liste)
-    selected_ticker = st.session_state.selected_symbol
+    symbols = _analysis_symbols()
+    if not symbols:
+        st.markdown(
+            """
+            <div class="section-empty-state">
+              <p class="section-empty-title">No symbol selected</p>
+              <p class="section-empty-body">
+                Select one or more rows in the <strong>Portfolio screener</strong> table above.
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    selected_ticker = _sync_ta_chart_symbol(symbols)
+
     pick = next(
         (item for item in st.session_state.all_results if item["data"]["Symbol"] == selected_ticker),
         None,
@@ -343,11 +462,7 @@ def render_detail_panel():
     available_months = hist_full.index.to_period("M").unique()
     month_options = [d.strftime("%Y-%m") for d in available_months]
     _ensure_month_range(month_options)
-
-    st.markdown(
-        f'<p class="tech-header">{selected_ticker} — Technical Analysis</p>',
-        unsafe_allow_html=True,
-    )
+    _render_symbol_nav_bar(symbols, st.session_state.ta_nav_index)
 
     vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor = _compute_chart_data(hist_full)
     _render_tech_controls_row(month_options, main_trend, fib_trends)

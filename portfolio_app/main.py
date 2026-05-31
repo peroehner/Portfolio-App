@@ -2,7 +2,10 @@
 import streamlit as st
 
 from portfolio_app.config import PAGE_ICON
-from portfolio_app.services.session_context import load_active_portfolio
+from portfolio_app.services.session_context import (
+    consume_pending_portfolio_activation,
+    load_active_portfolio,
+)
 from portfolio_app.ui.holdings import get_editable_holdings_df
 from portfolio_app.ui.components import inject_table_click_modifiers
 from portfolio_app.ui.detail_panel import render_detail_panel
@@ -19,6 +22,8 @@ def run():
     inject_desktop_icons()
     inject_app_styles()
     inject_table_click_modifiers()
+
+    consume_pending_portfolio_activation()
 
     render_header()
     ensure_uploader_key()

@@ -96,13 +96,55 @@ def consume_refetch_metadata_flag() -> bool:
     return st.session_state.pop("_pending_refetch_metadata", True)
 
 
+def _reset_portfolio_display_state() -> None:
+    """Clear analysis/KPI session data so a portfolio switch never flashes stale rows."""
+    st.session_state.all_results = []
+    st.session_state.total_depot_value = 0.0
+    st.session_state.total_depot_cost = 0.0
+    st.session_state.total_depot_target = 0.0
+    st.session_state.total_depot_div_income = 0.0
+    st.session_state.portfolio_symbols = tuple()
+    st.session_state.ticker_liste = []
+    clear_portfolio_table_widget()
+
+
+def queue_portfolio_activation(portfolio_id: int, *, refetch_metadata: bool = True) -> None:
+    """Apply portfolio switch on the next full app run (required after st.dialog actions)."""
+    st.session_state["_pending_portfolio_id"] = int(portfolio_id)
+    st.session_state["_pending_portfolio_refetch"] = refetch_metadata
+
+
+def consume_pending_portfolio_activation() -> bool:
+    """Switch to a portfolio queued from a dialog; returns True when applied."""
+    pending_id = st.session_state.pop("_pending_portfolio_id", None)
+    if pending_id is None:
+        return False
+    refetch = st.session_state.pop("_pending_portfolio_refetch", True)
+    user = get_session_user()
+    active = get_portfolio_service().load_portfolio(user.id, int(pending_id))
+    if not active:
+        return False
+    activate_portfolio(active, refetch_metadata=refetch)
+    return True
+
+
 def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True):
     """Switch session to a portfolio and invalidate analysis."""
+    previous_id = get_active_portfolio_id()
     set_active_portfolio_id(active.portfolio_id)
     get_portfolio_service().remember_last_portfolio(active.user_id, active.portfolio_id)
+    st.session_state["portfolio_selector"] = active.name
+    st.session_state["_force_portfolio_selector_sync"] = active.name
+    if previous_id and previous_id != active.portfolio_id:
+        st.session_state.pop(f"holdings_draft_{previous_id}", None)
     st.session_state.pop(f"holdings_draft_{active.portfolio_id}", None)
     st.session_state.pop("portfolio_table", None)
     st.session_state.pop("portfolio_table_roi_editor", None)
+    st.session_state.pop("selected_symbol", None)
+    st.session_state.pop("selected_symbols", None)
+    st.session_state.pop("table_sel_rows", None)
+    st.session_state.pop("ticker_index", None)
+    _reset_portfolio_display_state()
     invalidate_analysis(refetch_metadata=refetch_metadata)
 
 

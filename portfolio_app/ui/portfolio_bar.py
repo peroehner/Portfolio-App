@@ -8,13 +8,36 @@ from portfolio_app.services.session_context import (
     get_session_user,
     invalidate_analysis,
     load_active_portfolio,
+    queue_portfolio_activation,
 )
-from portfolio_app.ui.holdings import clear_holdings_draft
+from portfolio_app.ui.holdings import clear_holdings_draft, get_editable_holdings_df
 from portfolio_app.ui.components import mark_preserve_table_selection
 
 
 def _portfolio_options(portfolios) -> dict[str, int]:
     return {p.name: p.id for p in portfolios}
+
+
+def _on_portfolio_selected() -> None:
+    """Load the portfolio the user picked in the selector."""
+    picked = st.session_state.get("portfolio_selector")
+    if not picked:
+        return
+
+    user = get_session_user()
+    svc = get_portfolio_service()
+    active = load_active_portfolio()
+    if picked == active.name:
+        return
+
+    options = _portfolio_options(svc.list_portfolios(user.id))
+    if picked not in options:
+        return
+
+    switched = svc.load_portfolio(user.id, options[picked])
+    if switched:
+        activate_portfolio(switched, refetch_metadata=True)
+        st.rerun()
 
 
 def _kpi_pct_vs_cost_html(amount: float, cost: float) -> str:
@@ -69,7 +92,7 @@ def _new_portfolio_dialog():
             user = get_session_user()
             svc = get_portfolio_service()
             active = svc.create_empty_portfolio(user.id, name.strip())
-            activate_portfolio(active, refetch_metadata=True)
+            queue_portfolio_activation(active.portfolio_id)
             st.session_state.portfolio_table_view = "ROI"
             st.session_state.portfolio_more_open = True
             st.rerun()
@@ -89,7 +112,7 @@ def _rename_portfolio_dialog():
             return
         try:
             renamed = svc.rename_portfolio(user.id, active.portfolio_id, name.strip())
-            activate_portfolio(renamed, refetch_metadata=False)
+            queue_portfolio_activation(renamed.portfolio_id, refetch_metadata=False)
             st.success("Portfolio renamed.")
             st.rerun()
         except ValueError as e:
@@ -111,7 +134,7 @@ def _delete_portfolio_dialog():
     confirm = st.checkbox("I understand — delete this portfolio permanently")
     if st.button("Delete portfolio", type="primary", use_container_width=True, disabled=not confirm):
         next_active = svc.delete_portfolio(user.id, active.portfolio_id)
-        activate_portfolio(next_active, refetch_metadata=True)
+        queue_portfolio_activation(next_active.portfolio_id)
         st.success("Portfolio deleted.")
         st.rerun()
 
@@ -135,7 +158,12 @@ def render_portfolio_controls(
     options = _portfolio_options(portfolios)
     names = list(options.keys()) if options else []
 
-    symbol_count = len(df_port) if df_port is not None and not df_port.empty else 0
+    display_holdings = get_editable_holdings_df()
+    symbol_count = (
+        len(display_holdings)
+        if display_holdings is not None and not display_holdings.empty
+        else 0
+    )
     value = st.session_state.get("total_depot_value", 0)
     cost = st.session_state.get("total_depot_cost", 0)
     target = st.session_state.get("total_depot_target", 0)
@@ -143,37 +171,40 @@ def render_portfolio_controls(
 
     with col_sel:
         if options:
+            force = st.session_state.pop("_force_portfolio_selector_sync", None)
+            if force and force in names:
+                st.session_state["portfolio_selector"] = force
+            elif active.name in names and st.session_state.get("portfolio_selector") not in names:
+                st.session_state["portfolio_selector"] = active.name
+
             try:
                 index = names.index(active.name)
             except ValueError:
                 index = 0
-            picked = st.selectbox(
+            st.selectbox(
                 "Portfolio",
                 names,
                 index=index,
                 key="portfolio_selector",
                 label_visibility="collapsed",
+                on_change=_on_portfolio_selected,
             )
-            if picked != active.name:
-                switched = svc.load_portfolio(user.id, options[picked])
-                if switched:
-                    activate_portfolio(switched, refetch_metadata=True)
-                    st.rerun()
         else:
             st.caption("—")
 
     if col_up is not None:
         with col_up:
-            export_disabled = df_port is None or df_port.empty
+            export_active = load_active_portfolio()
+            export_df = get_editable_holdings_df()
             st.download_button(
                 "",
-                data=holdings_to_export_csv(df_port),
-                file_name=portfolio_export_filename(active.name),
+                data=holdings_to_export_csv(export_df),
+                file_name=portfolio_export_filename(export_active.name),
                 mime="text/csv",
                 help="Export portfolio to CSV",
-                key="portfolio_export_btn",
+                key=f"portfolio_export_{export_active.portfolio_id}",
                 icon=":material/download:",
-                disabled=export_disabled,
+                disabled=export_df is None,
                 use_container_width=True,
                 on_click=mark_preserve_table_selection,
             )

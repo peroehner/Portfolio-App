@@ -5,9 +5,9 @@ import streamlit as st
 
 from portfolio_app.data.portfolio_loader import _read_uploaded_portfolio
 from portfolio_app.services.session_context import (
-    activate_portfolio,
     get_portfolio_service,
     get_session_user,
+    queue_portfolio_activation,
 )
 from portfolio_app.ui.holdings import get_editable_holdings_df
 from portfolio_app.ui.portfolio_bar import render_portfolio_controls
@@ -104,7 +104,7 @@ def upload_portfolio_dialog():
                 pending_df,
                 replace_existing=bool(existing),
             )
-            activate_portfolio(imported, refetch_metadata=True)
+            queue_portfolio_activation(imported.portfolio_id)
             st.session_state.portfolio_table_view = "ROI"
             st.session_state.uploader_key += 1
             _clear_upload_pending()

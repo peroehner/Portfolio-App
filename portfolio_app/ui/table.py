@@ -651,12 +651,17 @@ def _selection_df_for_view(view_name: str, summary_df: pd.DataFrame, holdings_df
 
 def render_portfolio_table_section():
     """Portfolio table with view switcher; ROI view supports inline holdings edits."""
-    results = st.session_state.get("all_results") or []
-    summary_df = pd.DataFrame([x["data"] for x in results]) if results else pd.DataFrame()
-
     active = load_active_portfolio()
     portfolio_id = active.portfolio_id
     holdings_df = get_editable_holdings_df()
+
+    results = st.session_state.get("all_results") or []
+    if holdings_df.empty:
+        summary_df = pd.DataFrame()
+    elif results:
+        summary_df = pd.DataFrame([x["data"] for x in results])
+    else:
+        summary_df = pd.DataFrame()
 
     view_options = list(TABLE_VIEW_COLUMNS.keys())
     default_view = st.session_state.get("portfolio_table_view", view_options[0])

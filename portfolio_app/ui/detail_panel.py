@@ -17,7 +17,6 @@ def _sync_ticker_selection(ticker_liste):
     if st.session_state.get("selected_symbol") not in ticker_liste:
         st.session_state.selected_symbol = ticker_liste[0]
         st.session_state.ticker_index = 0
-        st.session_state["fibo_needs_refresh"] = True
     elif (
         "ticker_index" not in st.session_state
         or st.session_state.ticker_index >= len(ticker_liste)
@@ -25,7 +24,53 @@ def _sync_ticker_selection(ticker_liste):
         st.session_state.ticker_index = ticker_liste.index(
             st.session_state.selected_symbol
         )
-        st.session_state["fibo_needs_refresh"] = True
+
+
+def _clamp_month_in_options(value, month_options, default):
+    if value in month_options:
+        return value
+    return default
+
+
+def _ensure_month_range(month_options):
+    if not month_options:
+        return
+
+    start_default = month_options[0]
+    end_default = month_options[-1]
+
+    if st.session_state.get("fibo_needs_refresh", False):
+        st.session_state["calc_fib_start"] = start_default
+        st.session_state["calc_fib_end"] = end_default
+        st.session_state["sel_start_ui"] = start_default
+        st.session_state["sel_end_ui"] = end_default
+        st.session_state["fibo_needs_refresh"] = False
+    else:
+        start = _clamp_month_in_options(
+            st.session_state.get("sel_start_ui"), month_options, start_default
+        )
+        end = _clamp_month_in_options(
+            st.session_state.get("sel_end_ui"), month_options, end_default
+        )
+        if month_options.index(start) > month_options.index(end):
+            start, end = start_default, end_default
+        st.session_state["sel_start_ui"] = start
+        st.session_state["sel_end_ui"] = end
+
+        calc_start = _clamp_month_in_options(
+            st.session_state.get("calc_fib_start"), month_options, start
+        )
+        calc_end = _clamp_month_in_options(
+            st.session_state.get("calc_fib_end"), month_options, end
+        )
+        if month_options.index(calc_start) > month_options.index(calc_end):
+            calc_start, calc_end = start, end
+        st.session_state["calc_fib_start"] = calc_start
+        st.session_state["calc_fib_end"] = calc_end
+
+    # Chart viewport — must exist before _compute_chart_data (controls row sets again after widgets)
+    st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
+    st.session_state["ui_fib_end"] = st.session_state["sel_end_ui"]
 
 
 def _load_hist_for_ticker(selected_ticker, pick):
@@ -38,28 +83,6 @@ def _load_hist_for_ticker(selected_ticker, pick):
             hist_full["High"] = hist_full["Close"]
             hist_full["Low"] = hist_full["Close"]
     return hist_full
-
-
-def _ensure_month_range(month_options):
-    def ensure_month_key(key, default):
-        if key not in st.session_state or st.session_state[key] not in month_options:
-            st.session_state[key] = default
-
-    ensure_month_key("calc_fib_start", month_options[0])
-    ensure_month_key("calc_fib_end", month_options[-1])
-    ensure_month_key("sel_start_ui", month_options[0])
-    ensure_month_key("sel_end_ui", month_options[-1])
-
-    if st.session_state.get("fibo_needs_refresh", True):
-        st.session_state["calc_fib_start"] = month_options[0]
-        st.session_state["calc_fib_end"] = month_options[-1]
-        st.session_state["sel_start_ui"] = month_options[0]
-        st.session_state["sel_end_ui"] = month_options[-1]
-        st.session_state["fibo_needs_refresh"] = False
-
-    # Chart viewport — must exist before _compute_chart_data (controls row sets again after widgets)
-    st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
-    st.session_state["ui_fib_end"] = st.session_state["sel_end_ui"]
 
 
 def is_trend_overlay_enabled():
@@ -88,6 +111,7 @@ def _bump_start_forward():
     idx_start = opts.index(st.session_state["sel_start_ui"])
     idx_end = opts.index(st.session_state["sel_end_ui"])
     st.session_state["sel_start_ui"] = opts[min(idx_start + 3, idx_end)]
+    mark_preserve_table_selection()
 
 
 def _bump_end_backward():
@@ -95,11 +119,13 @@ def _bump_end_backward():
     idx_start = opts.index(st.session_state["sel_start_ui"])
     idx_end = opts.index(st.session_state["sel_end_ui"])
     st.session_state["sel_end_ui"] = opts[max(idx_end - 3, idx_start)]
+    mark_preserve_table_selection()
 
 
 def _apply_reanalyse():
     st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
     st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
+    mark_preserve_table_selection()
 
 
 def _render_tech_controls_row(month_options, main_trend, fib_trends):

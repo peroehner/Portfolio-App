@@ -55,7 +55,7 @@ portfolio_app/
     metadata.py           # Background analyst field loader
   ui/
     theme.py              # Global CSS and desktop icons
-    components.py         # Alt/Shift table clicks, trend icons
+    components.py         # Trend icons, selection preserve helper
     header.py             # Logo and title
     user_sidebar.py       # Email identity
     toolbar.py            # Upload dialog, reset, refresh
@@ -81,5 +81,5 @@ Semicolon-separated (`;`), columns include: `Symbol`, `Shares`, `AvgCost`, `Purc
 ## Development notes
 
 - Fibonacci uses **T1** (strongest trend leg in the Re-Analyse window), not full-window high/low.
-- Table selection: click = single row, Shift = range, Alt = toggle, uncheck = remove from export.
+- Table selection: click = select only that row, Shift = range, Alt/Option = toggle that row only.
 - Pause large feature work on `app.py` while refactor branches are active; branch from updated `main` for small fixes.

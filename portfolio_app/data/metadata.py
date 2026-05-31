@@ -11,7 +11,7 @@ from portfolio_app.config import (
 from portfolio_app.analysis.portfolio_build import compute_total_depot_div_income
 from portfolio_app.analysis.returns import compute_annual_div_income
 from portfolio_app.data.market_data import get_symbol_metadata
-from portfolio_app.session_keys import clear_portfolio_table_widget
+from portfolio_app.ui.components import mark_preserve_table_selection
 
 
 def apply_metadata_to_item(item, est_target, pct_change, div_yield):
@@ -140,7 +140,7 @@ def portfolio_metadata_progress():
 
     _, just_finished = process_metadata_background_batch()
     if just_finished:
-        clear_portfolio_table_widget()
+        mark_preserve_table_selection()
         st.rerun()
 
     total = st.session_state.get("metadata_total", 0)

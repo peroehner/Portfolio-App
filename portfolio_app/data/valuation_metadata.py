@@ -11,7 +11,7 @@ from portfolio_app.analysis.valuation_scores import (
 )
 from portfolio_app.config import METADATA_BATCH_SIZE, METADATA_POLL_SECONDS
 from portfolio_app.data.valuation_data import get_symbol_valuation
-from portfolio_app.session_keys import clear_portfolio_table_widget
+from portfolio_app.ui.components import mark_preserve_table_selection
 
 
 def apply_valuation_raw_to_item(item, valuation_fields: dict):
@@ -127,7 +127,7 @@ def portfolio_valuation_progress():
     _, just_finished = process_valuation_background_batch()
     view = st.session_state.get("portfolio_table_view", "")
     if just_finished and view == "Valuation Growth":
-        clear_portfolio_table_widget()
+        mark_preserve_table_selection()
         st.rerun()
 
     if view != "Valuation Growth":

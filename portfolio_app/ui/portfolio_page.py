@@ -93,6 +93,7 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
         st.session_state.table_sel_rows = []
         st.session_state.ticker_index = 0
         st.session_state.clear_table_selection = True
+        st.session_state["fibo_needs_refresh"] = True
         clear_portfolio_table_widget()
     st.session_state.portfolio_symbols = unique_symbols
     if refetch_metadata:

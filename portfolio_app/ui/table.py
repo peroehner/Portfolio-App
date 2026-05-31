@@ -43,10 +43,16 @@ from portfolio_app.ui.holdings import (
 from portfolio_app.ui.table_style import style_signed_column
 
 
+
 def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_held=False):
     """
-    Plain click -> only that row. Shift+click -> contiguous range.
-    Alt+click -> toggle one row. Uncheck -> keep the rest.
+    Plain click -> select only that row (exclusive).
+    Shift+click -> contiguous range.
+    Alt/Option+click -> toggle one row on/off (multi-select).
+
+    Toggle-off and shift-range are inferred from the widget delta when modifier
+    keys are unavailable. Plain click is enforced when a new row is added without
+    Alt — even if the native multi-select widget keeps other rows selected.
     """
     new_rows = sorted({int(r) for r in raw_rows})
     prev_rows = sorted({int(r) for r in (prev_rows or [])})
@@ -54,52 +60,47 @@ def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_he
     if not new_rows:
         return []
 
-    added = set(new_rows) - set(prev_rows)
-    removed = set(prev_rows) - set(new_rows)
+    prev_set = set(prev_rows)
+    new_set = set(new_rows)
+    added = new_set - prev_set
+    removed = prev_set - new_set
     is_contiguous = new_rows[-1] - new_rows[0] + 1 == len(new_rows)
 
-    if alt_held:
-        if not new_rows:
-            return []
-        # Uncheck: widget keeps the other selected rows.
-        if len(removed) == 1 and not added:
-            return new_rows
-        # Check: widget adds one row without dropping others.
-        if len(added) == 1 and not removed:
-            return sorted(set(prev_rows) | added)
-        # Widget replaced selection with only the clicked row — toggle that row.
-        if len(new_rows) == 1:
-            t = new_rows[0]
-            if t in prev_rows:
-                return sorted(r for r in prev_rows if r != t)
-            return sorted(set(prev_rows) | {t})
-        # One new row while others dropped from widget state — still add it.
-        if len(added) == 1:
-            return sorted(set(prev_rows) | added)
-        return new_rows
-
-    # Plain click: replace selection with the newly clicked row.
-    if not shift_held:
-        if len(added) == 1 and len(removed) == 1:
-            return [next(iter(added))]
-        if len(added) == 1 and prev_rows and len(new_rows) > 1:
-            return [next(iter(added))]
-
-    if len(new_rows) == 1:
-        return new_rows
-
+    # Toggle off: widget dropped exactly one previously selected row.
     if len(removed) == 1 and not added:
         return new_rows
 
+    # Shift range: contiguous block grew by 2+ rows from the prior selection.
+    if (
+        prev_rows
+        and is_contiguous
+        and len(new_rows) >= 2
+        and prev_set.issubset(new_set)
+        and len(added) >= 2
+    ):
+        return new_rows
     if shift_held and is_contiguous and len(new_rows) >= 2:
         return new_rows
-    if len(added) >= 2 and is_contiguous:
+
+    # Toggle on: one new row while keeping the rest (Option+click).
+    if len(added) == 1 and not removed and prev_set.issubset(new_set):
+        if alt_held:
+            return new_rows
+        if shift_held and is_contiguous:
+            return new_rows
+        if prev_rows:
+            return sorted(added)
         return new_rows
 
-    if len(added) == 1:
-        return [next(iter(added))]
+    # Exclusive: widget collapsed to a single row.
+    if len(new_rows) == 1:
+        return new_rows
 
-    return [new_rows[-1]]
+    # Exclusive: replaced selection with one new row (dropped others).
+    if len(added) == 1 and removed:
+        return sorted(added)
+
+    return new_rows
 
 
 def rows_to_symbols(row_indices, summary_df):
@@ -125,23 +126,36 @@ def commit_selection_state(rows, summary_df):
     if st.session_state.get("selected_symbol") != focus:
         st.session_state.selected_symbol = focus
         st.session_state.ticker_index = last_row_idx
-        st.session_state["fibo_needs_refresh"] = True
         prioritize_metadata_symbol(focus)
         prioritize_valuation_symbol(focus)
 
 
+def _extract_selection_rows(src) -> list[int]:
+    if src is None:
+        return []
+    selection = src.get("selection") if hasattr(src, "get") else getattr(src, "selection", None)
+    if selection is None:
+        return []
+    rows = selection.get("rows") if hasattr(selection, "get") else getattr(selection, "rows", None)
+    if not rows:
+        return []
+    return sorted({int(r) for r in rows})
+
+
+def _widget_selection_rows(table_key: str) -> list[int]:
+    return _extract_selection_rows(st.session_state.get(table_key))
+
+
+def _sync_widget_selection(table_key: str, rows: list[int]) -> None:
+    st.session_state[table_key] = _selection_widget_state(rows)
+
+
 def _raw_selection_rows(table_key: str, event_state=None) -> list[int]:
-    """Read row indices from dataframe widget state or its return value."""
-    sources = (event_state, st.session_state.get(table_key))
-    for src in sources:
-        if src is None:
-            continue
-        selection = src.get("selection") if hasattr(src, "get") else getattr(src, "selection", None)
-        if not selection:
-            continue
-        rows = selection.get("rows") if hasattr(selection, "get") else getattr(selection, "rows", None)
-        if rows is not None:
-            return [int(r) for r in rows]
+    """Read row indices — widget session state first (updated before script rerun)."""
+    for src in (st.session_state.get(table_key), event_state):
+        rows = _extract_selection_rows(src)
+        if rows:
+            return rows
     return []
 
 
@@ -161,7 +175,8 @@ def _apply_pending_widget_selection(summary_df, table_key: str) -> bool:
         return False
     rows = sorted({int(r) for r in pending})
     commit_selection_state(rows, summary_df)
-    st.session_state[table_key] = _selection_widget_state(rows)
+    _sync_widget_selection(table_key, rows)
+    st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
     return True
 
 
@@ -182,26 +197,31 @@ def _technical_controls_changed() -> bool:
 
 
 def prepare_table_selection_before_render(summary_df, table_key: str = "portfolio_table") -> None:
-    """Clear selection, apply pending normalization, or preserve on TA-only reruns."""
-    _apply_pending_widget_selection(summary_df, table_key)
+    """Apply pending corrections, preserve selection, or restore widget from stored rows."""
+    if _apply_pending_widget_selection(summary_df, table_key):
+        return
 
     if st.session_state.pop(_PRESERVE_SELECTION_KEY, False):
         prev_rows = st.session_state.get("table_sel_rows", [])
         if prev_rows:
             commit_selection_state(prev_rows, summary_df)
-            st.session_state[table_key] = _selection_widget_state(prev_rows)
+            _sync_widget_selection(table_key, prev_rows)
         st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
+        return
 
     if st.session_state.pop("clear_table_selection", False):
         st.session_state.table_sel_rows = []
         st.session_state.selected_symbols = []
-        st.session_state[table_key] = _selection_widget_state([])
+        _sync_widget_selection(table_key, [])
         return
 
     if _technical_controls_changed():
         prev_rows = st.session_state.get("table_sel_rows", [])
-        commit_selection_state(prev_rows, summary_df)
-        st.session_state[table_key] = _selection_widget_state(prev_rows)
+        if prev_rows:
+            commit_selection_state(prev_rows, summary_df)
+            _sync_widget_selection(table_key, prev_rows)
+        st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
+        return
 
 
 def apply_table_selection_after_widget(
@@ -216,21 +236,39 @@ def apply_table_selection_after_widget(
     if st.session_state.pop(_SKIP_SELECTION_APPLY_KEY, False):
         return
 
+    stored = sorted(int(r) for r in st.session_state.get("table_sel_rows", []))
+    widget = _widget_selection_rows(table_key)
     raw_rows = _raw_selection_rows(table_key, event_state=event)
-    if not raw_rows and not st.session_state.get("table_sel_rows"):
+    if not raw_rows:
+        raw_rows = widget
+
+    if not raw_rows:
+        if stored:
+            commit_selection_state([], summary_df)
+            if widget:
+                st.session_state[_pending_selection_key(table_key)] = []
+                st.rerun()
         return
 
-    prev_rows = st.session_state.get("table_sel_rows", [])
+    if raw_rows == stored and widget == stored:
+        return
+
+    prev_rows = stored
     shift_held, alt_held = get_table_click_modifiers()
     rows = normalize_table_selection_rows(
         raw_rows, prev_rows, shift_held=shift_held, alt_held=alt_held
     )
-    commit_selection_state(rows, summary_df)
-
-    canonical = sorted({int(r) for r in raw_rows})
     normalized = sorted({int(r) for r in rows})
-    if normalized != canonical:
-        # Widget state cannot be written after st.dataframe; fix on the next run.
+    canonical = sorted({int(r) for r in raw_rows})
+
+    if not normalized and not prev_rows:
+        return
+
+    changed = normalized != prev_rows
+    if changed:
+        commit_selection_state(rows, summary_df)
+
+    if normalized != canonical or (changed and normalized != widget):
         st.session_state[_pending_selection_key(table_key)] = normalized
         st.rerun()
 
@@ -712,6 +750,6 @@ def render_portfolio_table_section():
                 st.caption(line)
     elif view_name != "ROI":
         st.caption(
-            "Click = single row · **Shift+click** = range · **Alt/Option+click** = toggle row · "
-            "uncheck = remove"
+            "**Click** = select only that row · **Shift+click** = range · "
+            "**Option+click** = toggle that row only"
         )

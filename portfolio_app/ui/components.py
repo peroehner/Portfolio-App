@@ -15,40 +15,33 @@ _MODIFIER_SCRIPT = """
     if (win.__pero_modifiers_bound) return;
     win.__pero_modifiers_bound = true;
 
-    function modifierHeld(e) {
-        return !!(
-            e.altKey
-            || (e.getModifierState && e.getModifierState("Alt"))
-            || e.ctrlKey
-        );
-    }
-
     function syncModifiers(e) {
         try {
-            var url = new URL(win.location.href);
-            var alt = modifierHeld(e);
             var shift = !!(e.shiftKey || (e.getModifierState && e.getModifierState("Shift")));
-            url.searchParams.set("_pero_alt", alt ? "1" : "0");
+            var alt = !!(e.altKey || (e.getModifierState && e.getModifierState("Alt")));
+            win.sessionStorage.setItem("_pero_shift", shift ? "1" : "0");
+            win.sessionStorage.setItem("_pero_alt", alt ? "1" : "0");
+            var url = new URL(win.location.href);
             url.searchParams.set("_pero_shift", shift ? "1" : "0");
-            win.history.replaceState({}, "", url);
+            url.searchParams.set("_pero_alt", alt ? "1" : "0");
+            win.history.replaceState({}, "", url.href);
         } catch (err) {}
     }
 
-    // Only pointer/mouse down — keyup was clearing Alt before Streamlit reran.
-    doc.addEventListener("pointerdown", syncModifiers, true);
-    doc.addEventListener("mousedown", syncModifiers, true);
+    ["pointerdown", "mousedown", "keydown", "click"].forEach(function (ev) {
+        doc.addEventListener(ev, syncModifiers, true);
+    });
 })();
 </script>
 """
 
 
-def inject_table_click_modifiers():
-    """Record Alt/Shift on pointer down into URL params for the next rerun."""
-    components.html(_MODIFIER_SCRIPT, height=0)
+def inject_table_click_modifiers() -> None:
+    """Capture Shift / Alt(Option) on pointer events (no external assets)."""
+    components.html(_MODIFIER_SCRIPT, height=0, width=0)
 
 
 def _qp_flag(name: str) -> bool | None:
-    """Read a 0/1 query flag; None if the param is absent this run."""
     if name not in st.query_params:
         return None
     raw = st.query_params.get(name)
@@ -57,32 +50,27 @@ def _qp_flag(name: str) -> bool | None:
     return str(raw).lower() in ("1", "true")
 
 
-def prime_click_modifiers():
-    """Latch modifier keys from URL at the start of each run."""
-    get_table_click_modifiers()
-
-
 def mark_preserve_table_selection() -> None:
     """Keep portfolio table multi-select when a non-table widget triggers rerun."""
-    import streamlit as st
-
     st.session_state["_preserve_table_selection"] = True
 
 
-def get_table_click_modifiers():
-    """Return (shift_held, alt_held) latched from the last pointer down."""
+def get_table_click_modifiers() -> tuple[bool, bool]:
+    """Return (shift_held, alt_held) latched from the last pointer event."""
     shift_qp = _qp_flag("_pero_shift")
     alt_qp = _qp_flag("_pero_alt")
 
     if shift_qp is not None:
-        st.session_state["_pero_shift_held"] = shift_qp
+        st.session_state["_pero_shift_lat"] = shift_qp
     if alt_qp is not None:
-        st.session_state["_pero_alt_held"] = alt_qp
+        st.session_state["_pero_alt_lat"] = alt_qp
 
-    return (
-        bool(st.session_state.get("_pero_shift_held", False)),
-        bool(st.session_state.get("_pero_alt_held", False)),
-    )
+    shift_held = bool(st.session_state.get("_pero_shift_lat", False))
+    alt_held = bool(st.session_state.get("_pero_alt_lat", False))
+
+    st.session_state["_pero_shift_held"] = shift_held
+    st.session_state["_pero_alt_held"] = alt_held
+    return shift_held, alt_held
 
 
 @st.cache_data

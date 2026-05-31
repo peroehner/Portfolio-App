@@ -48,7 +48,7 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
         detected_trends_str = "- No significant trends detected.\n"
 
     fib_levels_str = "".join(
-        f"- {label}: {val:.2f} $\n" for label, val in dynamic_fibs.items()
+        f"- {label}: {_fmt_num(val, 2)} $\n" for label, val in dynamic_fibs.items()
     )
 
     div_income = pick["data"].get("Div Income")
@@ -64,14 +64,16 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
     op_margin = _fmt_num(pick["data"].get("Op Margin %"), 1, "%")
     p_score = _fmt_num(pick["data"].get("P-Score"), 1)
     p_grade = pick["data"].get("Grade") or "-"
+    shares = pick["data"].get("Shares")
+    purchase = pick["data"].get("PurchaseDate") or "-"
 
     return f"""[TECHNICAL ANALYSIS EXPORT: {symbol}]
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Analysis window: {window_start} to {window_end}
 Fibonacci anchor: {fib_anchor}
-Current Price: {curr_p:.2f} $
-1Y Mean Target estimate: {pick['data'].get('Est Target') or 0:.2f} $ (Upside: {pick['data'].get('Upside %') or 0:.1f}%)
-Purchased {pick['data']['Shares']} shares on {pick['data']['PurchaseDate']} @ {pick['data']['Cost/Share']:.2f} $
+Current Price: {_fmt_num(curr_p, 2)} $
+1Y Mean Target estimate: {_fmt_num(pick['data'].get('Est Target'), 2)} $ (Upside: {_fmt_num(pick['data'].get('Upside %'), 1, '%')})
+Purchased {_fmt_num(shares, 2)} shares on {purchase} @ {_fmt_num(pick['data'].get('Cost/Share'), 2)} $
 {div_income_line}
 
 Valuation Growth:

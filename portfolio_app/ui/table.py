@@ -22,6 +22,7 @@ from portfolio_app.data.valuation_metadata import (
     prioritize_valuation_symbol,
 )
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
+from portfolio_app.ui.portfolio_grid import portfolio_grid
 from portfolio_app.ui.toolbar import is_portfolio_more_open
 from portfolio_app.ui.components import get_table_click_modifiers
 
@@ -130,6 +131,25 @@ def commit_selection_state(rows, summary_df):
         prioritize_valuation_symbol(focus)
 
 
+def apply_grid_selection(result, summary_df) -> None:
+    """Apply AG Grid component output — selection intent is already resolved in JS."""
+    if not result:
+        return
+    rows = sorted({int(r) for r in (result.get("rows") or [])})
+    stored = sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
+    if rows == stored:
+        return
+    commit_selection_state(rows, summary_df)
+
+
+def _grid_selected_rows(table_key: str = "portfolio_grid") -> list[int]:
+    """Row indices to pass into the grid — prefer live widget value over session lag."""
+    widget = st.session_state.get(table_key)
+    if isinstance(widget, dict) and widget.get("rows") is not None:
+        return sorted({int(r) for r in widget["rows"]})
+    return sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
+
+
 def _extract_selection_rows(src) -> list[int]:
     if src is None:
         return []
@@ -147,6 +167,8 @@ def _widget_selection_rows(table_key: str) -> list[int]:
 
 
 def _sync_widget_selection(table_key: str, rows: list[int]) -> None:
+    if table_key != "portfolio_table":
+        return
     st.session_state[table_key] = _selection_widget_state(rows)
 
 
@@ -213,6 +235,7 @@ def prepare_table_selection_before_render(summary_df, table_key: str = "portfoli
         st.session_state.table_sel_rows = []
         st.session_state.selected_symbols = []
         _sync_widget_selection(table_key, [])
+        st.session_state.pop("portfolio_grid", None)
         return
 
     if _technical_controls_changed():
@@ -348,6 +371,64 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
     return config
 
 
+def _format_grid_cell(column: str, value) -> str:
+    """Display strings for AG Grid cells (Phase 1 — no gradient styling yet)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    if column in TABLE_CURRENCY_COLS:
+        try:
+            return f"${float(value):,.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if column in TABLE_PERCENT_COLS:
+        try:
+            return f"{float(value):.2f}%"
+        except (TypeError, ValueError):
+            return str(value)
+    if column == "Div Yield":
+        try:
+            return f"{float(value):.1f}%"
+        except (TypeError, ValueError):
+            return str(value)
+    if column == "Shares":
+        try:
+            return f"{float(value):,.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def _rows_for_grid(display_df: pd.DataFrame) -> list[dict]:
+    records = []
+    for row_idx, (_, row) in enumerate(display_df.iterrows()):
+        rec = {"__rowIndex": row_idx}
+        for col in display_df.columns:
+            rec[col] = _format_grid_cell(col, row[col])
+        records.append(rec)
+    return records
+
+
+def _grid_column_defs(columns) -> list[dict]:
+    defs = []
+    for col in columns:
+        spec = {
+            "field": col,
+            "headerName": _column_display_name(col),
+            "sortable": False,
+            "resizable": True,
+        }
+        if col == "Symbol":
+            spec["pinned"] = "left"
+            spec["width"] = 96
+            spec["minWidth"] = 80
+        defs.append(spec)
+    return defs
+
+
+def _grid_height(row_count: int) -> int:
+    return min(max(120, 42 + 32 * max(row_count, 1)), 520)
+
+
 def get_table_format_dict(columns):
     """Pandas Styler formats — $ prefix, % suffix, thousands separators."""
     format_dict = {}
@@ -472,6 +553,34 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
     return save_clicked
 
 
+def render_portfolio_table_grid(
+    summary_df,
+    selection_df,
+    view_name="Standard",
+    table_key="portfolio_grid",
+):
+    """AG Grid read-only table (Phase 1 — Standard view)."""
+    cols = _view_columns(view_name, summary_df)
+    display_df = format_display_numerics(summary_df[cols].copy())
+
+    # Widget state updates before session on the same rerun — commit first.
+    widget = st.session_state.get(table_key)
+    if isinstance(widget, dict):
+        apply_grid_selection(widget, selection_df)
+
+    sel_rows = _grid_selected_rows(table_key)
+
+    result = portfolio_grid(
+        rows=_rows_for_grid(display_df),
+        column_defs=_grid_column_defs(cols),
+        selected_rows=sel_rows,
+        height=_grid_height(len(display_df)),
+        key=table_key,
+        default=None,
+    )
+    apply_grid_selection(result, selection_df)
+
+
 def render_portfolio_table_readonly(
     summary_df,
     view_name,
@@ -479,6 +588,12 @@ def render_portfolio_table_readonly(
     table_key="portfolio_table",
 ):
     """Read-only styled table (Standard / Trends views)."""
+    if view_name == "Standard":
+        render_portfolio_table_grid(
+            summary_df, selection_df, view_name=view_name, table_key="portfolio_grid"
+        )
+        return
+
     cols = _view_columns(view_name, summary_df)
     display_df = format_display_numerics(summary_df[cols].copy())
     format_dict = get_table_format_dict(cols)

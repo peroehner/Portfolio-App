@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="./vendor/ag-grid.css" />
+    <link rel="stylesheet" href="./vendor/ag-theme-quartz.css" />
+    <script src="./vendor/ag-grid-community.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Source Sans Pro", sans-serif;
+      }
+      #grid-root {
+        width: 100%;
+        height: 100%;
+      }
+      .pero-grid.ag-theme-quartz {
+        --ag-font-size: 13px;
+        --ag-row-height: 32px;
+        --ag-header-height: 34px;
+        --ag-selected-row-background-color: rgba(33, 150, 243, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid-root" class="pero-grid ag-theme-quartz"></div>
+    <script src="./grid.js"></script>
+  </body>
+</html>

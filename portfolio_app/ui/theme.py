@@ -3,6 +3,7 @@ import streamlit as st
 
 APP_CSS = """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
     /* Compact page chrome — more table visible above the fold */
     .block-container {
         padding-top: 0.5rem !important;
@@ -303,41 +304,124 @@ APP_CSS = """
     [data-testid="stProgress"] label {
         font-size: 0.8rem;
     }
-    /* Toolbar row: portfolio picker, KPIs, and action buttons on one baseline */
+    /* Toolbar row: portfolio picker, KPIs, and action buttons — one shared height */
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] {
+        --portfolio-toolbar-h: 2.25rem;
         align-items: center !important;
+        gap: 0.35rem !important;
     }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         display: flex !important;
         align-items: center !important;
-        justify-content: flex-start;
-        align-self: stretch !important;
-        min-height: 2.1rem !important;
-    }
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-strip-toolbar) {
-        align-items: stretch !important;
-    }
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"],
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
-        margin-bottom: 0 !important;
+        justify-content: flex-start !important;
+        align-self: center !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+        padding-top: 0 !important;
         padding-bottom: 0 !important;
     }
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox {
-        margin-bottom: 0 !important;
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {
         width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="element-container"] {
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: var(--portfolio-toolbar-h) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: stretch !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stVerticalBlock"] {
+        gap: 0 !important;
+        width: 100%;
+        height: var(--portfolio-toolbar-h) !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        justify-content: center !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stHtml"] {
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: var(--portfolio-toolbar-h) !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stHtml"] > div {
+        width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: var(--portfolio-toolbar-h) !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .kpi-toolbar-slot {
+        width: 100%;
+        height: var(--portfolio-toolbar-h);
+        min-height: var(--portfolio-toolbar-h);
+        max-height: var(--portfolio-toolbar-h);
+        display: flex;
+        align-items: center;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"],
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] label[data-testid="stWidgetLabel"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox,
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100%;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stSelectbox > div,
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div {
+        gap: 0 !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] {
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
     }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] > div {
-        min-height: 2.1rem !important;
-        height: 2.1rem !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        display: flex !important;
+        align-items: center !important;
     }
-    /* Toolbar icon buttons (↑ + ↺ 📁 🔄 ⋮) */
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-baseweb="select"] span {
+        line-height: 1.2 !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stButton,
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stDownloadButton {
+        margin: 0 !important;
+        width: 100%;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+    }
+    /* Toolbar icon buttons (↑ + ↺ 📁 🔄) */
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stButton > button,
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .stDownloadButton > button {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        min-height: 2.1rem !important;
-        height: 2.1rem !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+        max-height: var(--portfolio-toolbar-h) !important;
         width: 100% !important;
         padding: 0 !important;
         border-radius: 6px !important;
@@ -365,6 +449,153 @@ APP_CSS = """
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+    /* View tabs row — Gmail-style (icon + label, blue active underline) */
+    .portfolio-view-tabs-anchor {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stMarkdown"]:has(.portfolio-view-tabs-anchor) {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) {
+        align-items: flex-end !important;
+        margin-bottom: 0.35rem !important;
+        gap: 0.35rem !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:first-child {
+        border-bottom: 1px solid #dadce0;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
+        align-self: stretch !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:first-child [data-testid="element-container"],
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:first-child [data-testid="stVerticalBlock"] {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100%;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100%;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+        display: none !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: flex-end !important;
+        flex-wrap: nowrap !important;
+        gap: 0 !important;
+        width: 100%;
+        border: none !important;
+        background: transparent !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] {
+        flex: 0 0 auto !important;
+        display: inline-flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.45rem !important;
+        margin: 0 1.5rem 0 0 !important;
+        padding: 0.72rem 0.1rem 0.58rem 0.1rem !important;
+        background: transparent !important;
+        border: none !important;
+        border-bottom: 3px solid transparent !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        color: #5f6368 !important;
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+        line-height: 1.2 !important;
+        cursor: pointer !important;
+        min-height: unset !important;
+        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:hover {
+        color: #202124 !important;
+        background: rgba(60, 64, 67, 0.06) !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) {
+        color: #1a73e8 !important;
+        border-bottom-color: #1a73e8 !important;
+        margin-bottom: -1px !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked):hover {
+        color: #1a73e8 !important;
+        background: transparent !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] input[type="radio"] {
+        position: absolute !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        pointer-events: none !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] > div:first-child {
+        display: none !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] p {
+        margin: 0 !important;
+        padding: 0 !important;
+        white-space: nowrap;
+    }
+    /* Tab icons (Material Symbols) — order: Standard, Trends, ROI, Valuation */
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(1)::before {
+        content: "table_rows";
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(2)::before {
+        content: "trending_up";
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(3)::before {
+        content: "payments";
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(4)::before {
+        content: "monitoring";
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]::before {
+        font-family: "Material Symbols Outlined";
+        font-size: 1.125rem;
+        font-weight: normal;
+        font-style: normal;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:last-child {
+        align-self: center !important;
+        padding-bottom: 0.35rem !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:last-child .stButton > button {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-height: 2.1rem !important;
+        height: 2.1rem !important;
+        width: 100% !important;
+        padding: 0 !important;
+        border-radius: 6px !important;
+        border: 1px solid #d0d7de !important;
+        background: #fff !important;
+        box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06) !important;
+        font-size: 1.28rem !important;
+        line-height: 1 !important;
+    }
+    div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:last-child .stButton > button:hover {
+        border-color: #b8c5d0 !important;
+        background: #f6f8fa !important;
     }
     /* Add symbol / save row */
     div:has(> .portfolio-edit-anchor) + div[data-testid="stHorizontalBlock"] {
@@ -554,26 +785,6 @@ APP_CSS = """
         margin: 0 !important;
         white-space: nowrap;
     }
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdownContainer"]:has(.kpi-strip-toolbar),
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdown"]:has(.kpi-strip-toolbar) {
-        width: 100%;
-        margin: 0 !important;
-        padding: 0 !important;
-        display: flex !important;
-        align-items: stretch !important;
-        min-height: 2.1rem !important;
-        height: 2.1rem !important;
-    }
-    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdown"]:has(.kpi-strip-toolbar) p {
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1 !important;
-        width: 100%;
-        display: flex !important;
-        align-items: stretch !important;
-        min-height: 2.1rem !important;
-        height: 100% !important;
-    }
     .kpi-strip {
         display: flex;
         flex-wrap: nowrap;
@@ -591,12 +802,13 @@ APP_CSS = """
         width: 100%;
         overflow: hidden;
         box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06);
+        align-self: center;
     }
     .kpi-strip-toolbar {
-        margin: 0;
-        height: 2.1rem !important;
-        min-height: 2.1rem !important;
-        max-height: 2.1rem !important;
+        margin: 0 !important;
+        height: var(--portfolio-toolbar-h, 2.25rem) !important;
+        min-height: var(--portfolio-toolbar-h, 2.25rem) !important;
+        max-height: var(--portfolio-toolbar-h, 2.25rem) !important;
         flex: 1 1 auto;
     }
     .kpi-strip .kpi-item {

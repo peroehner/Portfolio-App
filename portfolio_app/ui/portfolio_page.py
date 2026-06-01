@@ -23,8 +23,10 @@ from portfolio_app.data.valuation_data import (
     get_symbol_valuation,
 )
 from portfolio_app.data.valuation_metadata import (
+    apply_valuation_to_results,
     start_valuation_background_load,
     start_valuation_for_new_symbols,
+    valuation_map_from_results,
 )
 from portfolio_app.services.session_context import (
     consume_refetch_metadata_flag,
@@ -65,8 +67,10 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
     eur_rate = get_exchange_rate() if needs_eur else None
 
     metadata_map = None
+    valuation_map = None
     if not refetch_metadata and "all_results" in st.session_state:
         metadata_map = metadata_map_from_results(st.session_state.all_results)
+        valuation_map = valuation_map_from_results(st.session_state.all_results)
 
     with st.spinner("Loading prices..."):
         bulk_close = fetch_bulk_close(unique_symbols, TABLE_HISTORY_PERIOD)
@@ -79,6 +83,8 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
         total_depot_target,
         total_depot_div_income,
     ) = build_portfolio_results(df_port, hist_by_symbol, eur_rate, metadata_map=metadata_map)
+
+    apply_valuation_to_results(results_temp, valuation_map or {})
 
     st.session_state.all_results = results_temp
     st.session_state.total_depot_value = total_depot_value

@@ -4,6 +4,7 @@ import time
 import streamlit as st
 
 from portfolio_app.analysis.valuation_scores import (
+    VALUATION_ALL_COLUMNS,
     VALUATION_RAW_COLUMNS,
     VALUATION_SCORE_COLUMNS,
     compute_portfolio_p_scores,
@@ -30,6 +31,38 @@ def clear_valuation_scores(all_results):
     for item in all_results:
         for col in VALUATION_SCORE_COLUMNS:
             item["data"][col] = None
+
+
+def valuation_map_from_results(all_results) -> dict[str, dict]:
+    """Rebuild valuation fields from session rows already enriched."""
+    enriched = st.session_state.get("valuation_enriched_symbols", set())
+    if not isinstance(enriched, set):
+        enriched = set(enriched)
+    if not enriched:
+        return {}
+    out: dict[str, dict] = {}
+    for item in all_results:
+        symbol = item["data"]["Symbol"]
+        if symbol not in enriched:
+            continue
+        out[symbol] = {col: item["data"].get(col) for col in VALUATION_ALL_COLUMNS}
+    return out
+
+
+def apply_valuation_to_results(all_results, valuation_map: dict[str, dict]) -> None:
+    """Merge cached valuation columns into a freshly built portfolio."""
+    if not valuation_map:
+        return
+    for item in all_results:
+        symbol = item["data"]["Symbol"]
+        fields = valuation_map.get(symbol)
+        if not fields:
+            continue
+        for col in VALUATION_ALL_COLUMNS:
+            if col in fields:
+                item["data"][col] = fields.get(col)
+    if st.session_state.get("valuation_loaded"):
+        recompute_all_p_scores(all_results)
 
 
 def recompute_all_p_scores(all_results):

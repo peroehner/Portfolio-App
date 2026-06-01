@@ -26,6 +26,26 @@
   var suppressEmit = false;
   var lastRowsJson = "";
   var lastColumnsJson = "";
+  var resizeObserver = null;
+
+  function fitColumnsToGrid(api) {
+    if (!api || !api.sizeColumnsToFit) return;
+    try {
+      api.sizeColumnsToFit({ defaultMinWidth: 44 });
+    } catch (err) {}
+  }
+
+  function observeGridResize(root) {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (!root || !window.ResizeObserver) return;
+    resizeObserver = new ResizeObserver(function () {
+      fitColumnsToGrid(gridApi);
+    });
+    resizeObserver.observe(root);
+  }
 
   function gradientCellStyle(params) {
     var styles = params.data && params.data.__styles;
@@ -138,6 +158,10 @@
   }
 
   function destroyGrid() {
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
     if (gridApi && gridApi.destroy) {
       gridApi.destroy();
     }
@@ -154,14 +178,21 @@
         sortable: true,
         resizable: true,
         filter: false,
-        minWidth: 72,
+        flex: 1,
+        minWidth: 44,
+        wrapHeaderText: true,
+        autoHeaderHeight: true,
+      },
+      autoSizeStrategy: {
+        type: "fitGridWidth",
+        defaultMinWidth: 44,
       },
       rowSelection: "multiple",
       suppressRowClickSelection: true,
       suppressCellFocus: true,
       animateRows: false,
-      headerHeight: 34,
-      rowHeight: 32,
+      headerHeight: 32,
+      rowHeight: 30,
       domLayout: "normal",
       getRowId: function (params) {
         return String(
@@ -170,11 +201,16 @@
       },
       onRowClicked: onRowClicked,
       onGridReady: function (params) {
+        fitColumnsToGrid(params.api);
         applySelection(params.api);
+      },
+      onFirstDataRendered: function (params) {
+        fitColumnsToGrid(params.api);
       },
     };
 
     gridApi = agGrid.createGrid(root, options);
+    observeGridResize(root);
   }
 
   function renderGrid(args) {
@@ -200,6 +236,7 @@
         lastRowsJson = rowsJson;
       }
       applySelection(gridApi);
+      fitColumnsToGrid(gridApi);
       return;
     }
 

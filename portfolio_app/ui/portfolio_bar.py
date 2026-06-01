@@ -252,13 +252,13 @@ def render_portfolio_controls(
                 st.rerun()
 
     with col_kpis:
-        st.markdown(
-            _kpi_strip_html(
+        st.html(
+            f'<div class="kpi-toolbar-slot">{_kpi_strip_html(
                 symbol_count=symbol_count,
                 value=value,
                 cost=cost,
                 target=target,
                 div_income=div_income,
-            ),
-            unsafe_allow_html=True,
+            )}</div>',
+            unsafe_allow_javascript=False,
         )

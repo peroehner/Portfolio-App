@@ -369,7 +369,7 @@ def build_valuation_legend_sections(
     else:
         headline_metrics = "PEG — · Rev — · OpM —"
 
-    headline = f"Calculated for **'{display_name}'**: {headline_metrics}"
+    headline = f"Calculated P-Score for **'{display_name}'**: {headline_metrics}"
 
     detail: list[str] = [
         f"P-Scores are percentiles **0–100** vs all holdings with data in this portfolio "

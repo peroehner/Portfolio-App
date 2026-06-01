@@ -23,7 +23,7 @@ from portfolio_app.data.valuation_metadata import (
 )
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
 from portfolio_app.ui.portfolio_grid import portfolio_grid
-from portfolio_app.ui.toolbar import is_portfolio_more_open
+from portfolio_app.ui.toolbar import is_portfolio_more_open, render_portfolio_more_button
 
 _PRESERVE_SELECTION_KEY = "_preserve_table_selection"
 from portfolio_app.ui.holdings import (
@@ -126,7 +126,7 @@ def prepare_table_selection_before_render(summary_df) -> None:
 
 
 def _column_display_name(column: str) -> str:
-    """Plain header labels for the data editor."""
+    """Plain header labels for the ROI data editor."""
     labels = {
         "🌐 Price": "Price",
         "📈 Target": "Target",
@@ -136,6 +136,44 @@ def _column_display_name(column: str) -> str:
         "Ø CAGR": "CAGR",
     }
     return labels.get(column, column)
+
+
+def _grid_header_name(column: str) -> str:
+    """Compact AG Grid headers to fit more columns without horizontal scroll."""
+    labels = {
+        "🌐 Price": "Price",
+        "📈 Target": "Target",
+        "📈 Total %": "Total %",
+        "∆ Act-Target %": "Δ Tgt%",
+        "∆ Act-Est Target %": "Δ Est%",
+        "Ø CAGR": "CAGR",
+        "PurchaseDate": "Purch",
+        "Cost/Share": "Cost",
+        "Div Income": "Div $",
+        "Est Target": "Est Tgt",
+        "Div Yield": "Div%",
+        "Trailing P/E": "Trail P/E",
+        "Forward P/E": "Fwd P/E",
+        "Rev Growth %": "Rev Gr%",
+        "Op Margin %": "Op Mgn%",
+        "PEG P-Score": "PEG PS",
+        "Rev P-Score": "Rev PS",
+        "Margin P-Score": "Mrg PS",
+        "P-Score": "P-Scr",
+    }
+    return labels.get(column, column)
+
+
+def _grid_min_width(column: str) -> int:
+    if column == "Symbol":
+        return 54
+    if column in {"5D", "1M", "6M", "12M", "PEG", "Grade", "Shares", "P-Score"}:
+        return 44
+    if column in {"Change %", "Upside %", "Div Yield"}:
+        return 48
+    if column == "PurchaseDate":
+        return 54
+    return 50
 
 
 def format_display_numerics(df: pd.DataFrame) -> pd.DataFrame:
@@ -317,22 +355,29 @@ def _grid_column_defs(columns, gradient_cols) -> list[dict]:
     for col in columns:
         spec = {
             "field": col,
-            "headerName": _column_display_name(col),
+            "headerName": _grid_header_name(col),
             "sortable": True,
             "resizable": True,
+            "wrapHeaderText": True,
+            "autoHeaderHeight": True,
         }
         if col in gradient_set:
             spec["gradient"] = True
         if col == "Symbol":
             spec["pinned"] = "left"
-            spec["width"] = 96
-            spec["minWidth"] = 80
+            spec["flex"] = 0
+            spec["width"] = 64
+            spec["minWidth"] = 54
+            spec["maxWidth"] = 80
+        else:
+            spec["flex"] = 1
+            spec["minWidth"] = _grid_min_width(col)
         defs.append(spec)
     return defs
 
 
 def _grid_height(row_count: int) -> int:
-    return min(max(120, 42 + 32 * max(row_count, 1)), 520)
+    return min(max(118, 40 + 30 * max(row_count, 1)), 520)
 
 
 def get_table_format_dict(columns):
@@ -518,21 +563,37 @@ def render_portfolio_table_roi(
     summary_df,
     holdings_df,
     selection_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    ROI view: AG Grid for selection/sorting; st.data_editor below when ⋮ is open.
-    """
-    display_df = _build_roi_display_df(summary_df, holdings_df)
+) -> None:
+    """ROI view: AG Grid for selection and sorting."""
     render_portfolio_table_grid(
         selection_df,
         summary_df=summary_df,
         view_name="ROI",
         holdings_df=holdings_df,
     )
-    if is_portfolio_more_open():
-        with st.expander("Edit portfolio rows", expanded=False):
-            return _render_roi_data_editor(display_df)
-    return display_df
+
+
+def _render_edit_portfolio_expander(
+    portfolio_id: int,
+    view_name: str,
+    summary_df: pd.DataFrame,
+    holdings_df: pd.DataFrame,
+    has_holdings: bool,
+) -> tuple[bool, pd.DataFrame]:
+    """Add/delete/save bar and optional ROI editor inside ⋮ menu expander."""
+    edited = (
+        _build_roi_display_df(summary_df, holdings_df)
+        if view_name == "ROI" and has_holdings
+        else holdings_df
+    )
+    save_clicked = False
+    with st.expander("Edit portfolio", expanded=False):
+        save_clicked = _render_add_symbol_bar(portfolio_id)
+        if view_name == "ROI" and has_holdings:
+            edited = _render_roi_data_editor(
+                _build_roi_display_df(summary_df, holdings_df)
+            )
+    return save_clicked, edited
 
 
 def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
@@ -559,6 +620,13 @@ def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
             st.warning(msg)
 
     return edited
+
+
+def _view_tab_label(view_name: str) -> str:
+    """Short labels for Gmail-style view tabs."""
+    return {
+        "Valuation Growth": "Valuation",
+    }.get(view_name, view_name)
 
 
 def _selection_df_for_view(view_name: str, summary_df: pd.DataFrame, holdings_df) -> pd.DataFrame:
@@ -594,17 +662,22 @@ def render_portfolio_table_section():
         st.session_state.portfolio_table_view = default_view
 
     save_clicked = False
-    if is_portfolio_more_open():
-        save_clicked = _render_add_symbol_bar(portfolio_id)
+    edited = holdings_df
 
-    # Render view switcher before selection reconcile so reruns keep the active tab.
-    view_name = st.radio(
-        "View",
-        view_options,
-        horizontal=True,
-        key="portfolio_table_view",
-        label_visibility="collapsed",
-    )
+    # View switcher (+ ⋮) before selection reconcile so reruns keep the active tab.
+    st.markdown('<div class="portfolio-view-tabs-anchor"></div>', unsafe_allow_html=True)
+    view_col, more_col = st.columns([11.2, 0.55], gap="small", vertical_alignment="center")
+    with view_col:
+        view_name = st.radio(
+            "View",
+            view_options,
+            horizontal=True,
+            key="portfolio_table_view",
+            label_visibility="collapsed",
+            format_func=_view_tab_label,
+        )
+    with more_col:
+        render_portfolio_more_button()
 
     selection_df = _selection_df_for_view(view_name, summary_df, holdings_df)
     if not selection_df.empty:
@@ -618,15 +691,25 @@ def render_portfolio_table_section():
     if view_name == "ROI":
         if not has_holdings:
             if is_portfolio_more_open():
-                st.caption("No symbols yet — add one above, then **Save portfolio**.")
+                st.caption("No symbols yet — add one in **Edit portfolio** below.")
             else:
                 st.caption("No symbols yet — open **⋮** to add holdings.")
-            edited = holdings_df
         elif summary_df.empty:
-            st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
-            edited = render_portfolio_table_roi(summary_df, holdings_df, selection_df)
+            st.caption("Edit holdings in **Edit portfolio** below, then **Save portfolio**.")
+            render_portfolio_table_roi(summary_df, holdings_df, selection_df)
         else:
-            edited = render_portfolio_table_roi(summary_df, holdings_df, selection_df)
+            render_portfolio_table_roi(summary_df, holdings_df, selection_df)
+    elif not summary_df.empty:
+        render_portfolio_table_readonly(summary_df, view_name, selection_df)
+    else:
+        st.caption("Load symbols to see analysis views (Standard, Trends, Valuation Growth).")
+
+    if is_portfolio_more_open():
+        save_clicked, edited = _render_edit_portfolio_expander(
+            portfolio_id, view_name, summary_df, holdings_df, has_holdings
+        )
+
+    if view_name == "ROI":
         if save_clicked:
             roi_errors = validate_roi_editor_df(edited)
             if roi_errors:
@@ -650,10 +733,6 @@ def render_portfolio_table_section():
                     st.error(str(e))
                 except Exception as e:
                     st.error(f"Could not save: {e}")
-    elif not summary_df.empty:
-        render_portfolio_table_readonly(summary_df, view_name, selection_df)
-    else:
-        st.caption("Load symbols to see analysis views (Standard, Trends, Valuation Growth).")
 
     if view_name == "Valuation Growth":
         results = st.session_state.get("all_results") or []
@@ -669,12 +748,3 @@ def render_portfolio_table_section():
                 st.code("\n".join(holding_lines), language=None)
             for line in detail_lines:
                 st.caption(line)
-
-    table_visible = (view_name == "ROI" and has_holdings) or (
-        view_name != "ROI" and not summary_df.empty
-    )
-    if table_visible:
-        st.caption(
-            "**Click** = select only that row · **Shift+click** = range · "
-            "**Option+click** = toggle that row only"
-        )

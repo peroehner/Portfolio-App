@@ -124,6 +124,21 @@ def is_portfolio_more_open() -> bool:
     return bool(st.session_state.get("portfolio_more_open", False))
 
 
+def render_portfolio_more_button() -> None:
+    """Toggle expanded portfolio actions (Add symbol, CSV, etc.)."""
+    more_open = is_portfolio_more_open()
+    if st.button(
+        "",
+        help="Hide extra actions" if more_open else "More portfolio actions",
+        use_container_width=True,
+        key="portfolio_more_btn",
+        icon=":material/more_vert:",
+        type="primary" if more_open else "secondary",
+    ):
+        st.session_state.portfolio_more_open = not more_open
+        st.rerun()
+
+
 def render_toolbar_row():
     """
     Render portfolio controls and action buttons in one vertically centered row.
@@ -136,16 +151,16 @@ def render_toolbar_row():
     more_open = is_portfolio_more_open()
 
     if more_open:
-        col_sel, col_up, col_new, col_rename, col_delete, col_reload, col_kpis, col_upload, col_refresh, col_more = (
+        col_sel, col_up, col_new, col_rename, col_delete, col_reload, col_kpis, col_upload, col_refresh = (
             st.columns(
-                [1.45, 0.34, 0.34, 0.34, 0.34, 0.34, 4.05, 0.36, 0.36, 0.36],
+                [1.45, 0.34, 0.34, 0.34, 0.34, 0.34, 4.41, 0.36, 0.36],
                 gap="small",
                 vertical_alignment="center",
             )
         )
     else:
-        col_sel, col_kpis, col_refresh, col_more = st.columns(
-            [1.85, 6.15, 0.38, 0.38],
+        col_sel, col_kpis, col_refresh = st.columns(
+            [1.85, 6.53, 0.38],
             gap="small",
             vertical_alignment="center",
         )
@@ -182,19 +197,6 @@ def render_toolbar_row():
             key="toolbar_refresh_btn",
             icon=":material/sync:",
         )
-
-    with col_more:
-        more_label = ""
-        if st.button(
-            more_label,
-            help="Hide extra actions" if more_open else "More portfolio actions",
-            use_container_width=True,
-            key="portfolio_more_btn",
-            icon=":material/more_vert:",
-            type="primary" if more_open else "secondary",
-        ):
-            st.session_state.portfolio_more_open = not more_open
-            st.rerun()
 
     if st.session_state.get("show_upload_dialog"):
         upload_portfolio_dialog()

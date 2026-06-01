@@ -24,8 +24,7 @@ Holdings are stored in **SQLite** at `data/pero.db` (gitignored). Each user can 
 - **Portfolio bar** — switch portfolios, **rename**, **New** (empty), or **↺** reload from database.
 - **📁 CSV import** — choose a **portfolio name** (defaults to the file name). If that name already exists, you must confirm **replace** (holdings are overwritten).
 - **Build manually** — **New** → **ROI** view → **Add symbol** → edit cells → **Save portfolio**.
-- **ROI view** — AG Grid for selection; open **⋮** → **Edit portfolio rows** to change shares, cost, and targets.
-- **Table selection** — **Click** one row · **Shift+click** range · **Option/Ctrl+click** toggle · drives Technical Analysis and Export.
+- **ROI view** — AG Grid for selection; open **⋮** → **Edit portfolio** to add symbols or change shares, cost, and targets.
 
 ## Project layout
 

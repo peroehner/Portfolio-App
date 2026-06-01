@@ -19,7 +19,7 @@ def portfolio_grid(
     default=None,
 ):
     """
-    Render portfolio rows in AG Grid with Gmail-like selection.
+    Render portfolio rows in AG Grid with Gmail-like selection and signed gradients.
 
     Returns ``{"rows": [int, ...], "symbols": [str, ...]}`` after user clicks,
     or ``default`` when unchanged.

@@ -41,7 +41,7 @@ from portfolio_app.ui.holdings import (
     set_holdings_draft,
     validate_roi_editor_df,
 )
-from portfolio_app.ui.table_style import style_signed_column
+from portfolio_app.ui.table_style import gradient_backgrounds, style_signed_column
 
 
 
@@ -372,7 +372,7 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
 
 
 def _format_grid_cell(column: str, value) -> str:
-    """Display strings for AG Grid cells (Phase 1 — no gradient styling yet)."""
+    """Display strings for AG Grid cells."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "-"
     if column in TABLE_CURRENCY_COLS:
@@ -395,28 +395,91 @@ def _format_grid_cell(column: str, value) -> str:
             return f"{float(value):,.2f}"
         except (TypeError, ValueError):
             return str(value)
+    if column in {"Trailing P/E", "Forward P/E", "PEG"}:
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if column in {"PEG P-Score", "Rev P-Score", "Margin P-Score"}:
+        try:
+            return f"{float(value):.0f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if column == "P-Score":
+        try:
+            return f"{float(value):.1f}"
+        except (TypeError, ValueError):
+            return str(value)
     return str(value)
 
 
-def _rows_for_grid(display_df: pd.DataFrame) -> list[dict]:
+def _gradient_columns_for_view(display_df: pd.DataFrame, cols) -> list[str]:
+    format_dict = get_table_format_dict(cols)
+    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
+    pscore_cols = [
+        c
+        for c in ("PEG P-Score", "Rev P-Score", "Margin P-Score", "P-Score")
+        if c in display_df.columns
+    ]
+    return [
+        c
+        for c in TABLE_PERCENT_COLS
+        if c in display_df.columns
+        and c in actual_format_dict
+        and c not in TABLE_GRADIENT_EXCLUDE
+    ] + [c for c in TABLE_PNL_COLS if c in display_df.columns] + pscore_cols
+
+
+def _prepare_readonly_display_df(view_name, summary_df) -> tuple[pd.DataFrame, list[str], list[str]]:
+    cols = _view_columns(view_name, summary_df)
+    display_df = format_display_numerics(summary_df[cols].copy())
+
+    skip_fillna = METADATA_COLS | METADATA_LATE_COLS | VALUATION_COLS | VALUATION_LATE_COLS
+    fill_cols = [
+        c
+        for c in TABLE_PERCENT_COLS + ["Div Yield"]
+        if c in display_df.columns and c not in skip_fillna
+    ]
+    if fill_cols:
+        display_df[fill_cols] = display_df[fill_cols].fillna(0)
+
+    gradient_cols = _gradient_columns_for_view(display_df, cols)
+    return display_df, cols, gradient_cols
+
+
+def _rows_for_grid(display_df: pd.DataFrame, gradient_cols: list[str]) -> list[dict]:
+    style_columns = {}
+    for col in gradient_cols:
+        if col in display_df.columns:
+            style_columns[col] = gradient_backgrounds(display_df[col])
+
     records = []
     for row_idx, (_, row) in enumerate(display_df.iterrows()):
         rec = {"__rowIndex": row_idx}
+        styles = {}
+        for col in gradient_cols:
+            if col in style_columns:
+                styles[col] = style_columns[col][row_idx]
+        if styles:
+            rec["__styles"] = styles
         for col in display_df.columns:
             rec[col] = _format_grid_cell(col, row[col])
         records.append(rec)
     return records
 
 
-def _grid_column_defs(columns) -> list[dict]:
+def _grid_column_defs(columns, gradient_cols) -> list[dict]:
+    gradient_set = set(gradient_cols)
     defs = []
     for col in columns:
         spec = {
             "field": col,
             "headerName": _column_display_name(col),
-            "sortable": False,
+            "sortable": True,
             "resizable": True,
         }
+        if col in gradient_set:
+            spec["gradient"] = True
         if col == "Symbol":
             spec["pinned"] = "left"
             spec["width"] = 96
@@ -559,11 +622,9 @@ def render_portfolio_table_grid(
     view_name="Standard",
     table_key="portfolio_grid",
 ):
-    """AG Grid read-only table (Phase 1 — Standard view)."""
-    cols = _view_columns(view_name, summary_df)
-    display_df = format_display_numerics(summary_df[cols].copy())
+    """AG Grid read-only table (Standard / Trends / Valuation Growth)."""
+    display_df, cols, gradient_cols = _prepare_readonly_display_df(view_name, summary_df)
 
-    # Widget state updates before session on the same rerun — commit first.
     widget = st.session_state.get(table_key)
     if isinstance(widget, dict):
         apply_grid_selection(widget, selection_df)
@@ -571,8 +632,8 @@ def render_portfolio_table_grid(
     sel_rows = _grid_selected_rows(table_key)
 
     result = portfolio_grid(
-        rows=_rows_for_grid(display_df),
-        column_defs=_grid_column_defs(cols),
+        rows=_rows_for_grid(display_df, gradient_cols),
+        column_defs=_grid_column_defs(cols, gradient_cols),
         selected_rows=sel_rows,
         height=_grid_height(len(display_df)),
         key=table_key,
@@ -587,58 +648,13 @@ def render_portfolio_table_readonly(
     selection_df,
     table_key="portfolio_table",
 ):
-    """Read-only styled table (Standard / Trends views)."""
-    if view_name == "Standard":
-        render_portfolio_table_grid(
-            summary_df, selection_df, view_name=view_name, table_key="portfolio_grid"
-        )
-        return
-
-    cols = _view_columns(view_name, summary_df)
-    display_df = format_display_numerics(summary_df[cols].copy())
-    format_dict = get_table_format_dict(cols)
-    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
-
-    skip_fillna = METADATA_COLS | METADATA_LATE_COLS | VALUATION_COLS | VALUATION_LATE_COLS
-    fill_cols = [
-        c for c in TABLE_PERCENT_COLS + ["Div Yield"]
-        if c in display_df.columns and c not in skip_fillna
-    ]
-    if fill_cols:
-        display_df[fill_cols] = display_df[fill_cols].fillna(0)
-
-    pscore_cols = [
-        c
-        for c in ("PEG P-Score", "Rev P-Score", "Margin P-Score", "P-Score")
-        if c in display_df.columns
-    ]
-    gradient_cols = [
-        c
-        for c in TABLE_PERCENT_COLS
-        if c in display_df.columns
-        and c in actual_format_dict
-        and c not in TABLE_GRADIENT_EXCLUDE
-    ] + [c for c in TABLE_PNL_COLS if c in display_df.columns] + pscore_cols
-    styled = display_df.style.format(actual_format_dict, na_rep="-").set_properties(
-        **{"background-color": "white", "color": "black"}
+    """Read-only AG Grid table (Standard / Trends / Valuation Growth)."""
+    render_portfolio_table_grid(
+        summary_df,
+        selection_df,
+        view_name=view_name,
+        table_key="portfolio_grid",
     )
-    if gradient_cols:
-        styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
-
-    sel_rows = st.session_state.get("table_sel_rows", [])
-    selection_default = _selection_widget_state(sel_rows) if sel_rows else None
-
-    event = st.dataframe(
-        styled,
-        use_container_width=True,
-        hide_index=True,
-        column_config=get_portfolio_table_column_config(cols, editable=False),
-        on_select="rerun",
-        selection_mode="multi-row",
-        selection_default=selection_default,
-        key=table_key,
-    )
-    apply_table_selection_after_widget(event, selection_df, table_key=table_key)
 
 
 def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:

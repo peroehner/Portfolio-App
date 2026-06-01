@@ -27,6 +27,25 @@
   var lastRowsJson = "";
   var lastColumnsJson = "";
 
+  function gradientCellStyle(params) {
+    var styles = params.data && params.data.__styles;
+    var field = params.colDef.field;
+    if (styles && styles[field]) {
+      return { backgroundColor: styles[field], color: "black" };
+    }
+    return { backgroundColor: "white", color: "black" };
+  }
+
+  function enrichColumnDefs(columnDefs) {
+    return (columnDefs || []).map(function (col) {
+      var next = Object.assign({}, col);
+      if (next.gradient) {
+        next.cellStyle = gradientCellStyle;
+      }
+      return next;
+    });
+  }
+
   function rowsToSymbols(indices) {
     return indices
       .map(function (idx) {
@@ -129,10 +148,10 @@
 
   function createGrid(root, columnDefs) {
     var options = {
-      columnDefs: columnDefs,
+      columnDefs: enrichColumnDefs(columnDefs),
       rowData: rowData,
       defaultColDef: {
-        sortable: false,
+        sortable: true,
         resizable: true,
         filter: false,
         minWidth: 72,
@@ -166,7 +185,9 @@
     var height = parseInt(args.height, 10) || 320;
     setFrameHeight(height);
 
-    var columnDefs = Array.isArray(args.column_defs) ? args.column_defs : [];
+    var columnDefs = enrichColumnDefs(
+      Array.isArray(args.column_defs) ? args.column_defs : []
+    );
     updateSelectedRowsFromPython(args.selected_rows);
 
     var rowsJson = JSON.stringify(rowData);
@@ -175,6 +196,7 @@
     if (gridApi && columnsJson === lastColumnsJson) {
       if (rowsJson !== lastRowsJson) {
         gridApi.setGridOption("rowData", rowData);
+        gridApi.setGridOption("columnDefs", columnDefs);
         lastRowsJson = rowsJson;
       }
       applySelection(gridApi);

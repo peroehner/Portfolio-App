@@ -406,7 +406,7 @@ def _ensure_analyst_data(selected_ticker, pick):
         return pick
     prioritize_metadata_symbol(selected_ticker)
     if selected_ticker not in st.session_state.get("enriched_symbols", set()):
-        with st.spinner(f"Loading analyst data for {selected_ticker}..."):
+        with st.spinner(f"Loading analyst estimates for {selected_ticker}..."):
             enrich_symbol_metadata(st.session_state.all_results, selected_ticker)
     return next(
         (item for item in st.session_state.all_results if item["data"]["Symbol"] == selected_ticker),
@@ -423,7 +423,7 @@ def render_detail_panel():
             <div class="section-empty-state">
               <p class="section-empty-title">No symbol to analyze yet</p>
               <p class="section-empty-body">
-                Add holdings in <strong>Portfolio screener</strong> above, then select table rows
+                Add holdings in <strong>Portfolio Screener</strong> above, then select table rows
                 and click a symbol chip below to view its chart.
               </p>
             </div>
@@ -439,7 +439,7 @@ def render_detail_panel():
             <div class="section-empty-state">
               <p class="section-empty-title">No symbol selected</p>
               <p class="section-empty-body">
-                Select one or more rows in the <strong>Portfolio screener</strong> table above.
+                Select one or more rows in the <strong>Portfolio Screener</strong> table above.
               </p>
             </div>
             """,

@@ -17,7 +17,7 @@ def render_header():
     with header_title_col:
         st.markdown(
             '<div class="app-headings">'
-            '<p class="app-title">Personal Portfolio Screener</p>'
+            '<p class="app-title">Portfolio Compass</p>'
             '<p class="app-subtitle section-subtitle">'
             "Choose portfolio · Select symbol(s) · Analyse chart"
             "</p></div>",

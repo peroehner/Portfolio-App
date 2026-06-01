@@ -44,15 +44,15 @@ def _dismiss_upload_dialog():
     _clear_upload_pending()
 
 
-@st.dialog("Load portfolio from CSV", on_dismiss=_dismiss_upload_dialog)
+@st.dialog("Import portfolio from CSV", on_dismiss=_dismiss_upload_dialog)
 def upload_portfolio_dialog():
     """Import CSV into a named portfolio; confirm when replacing an existing name."""
     st.caption(
-        "Semicolon-separated CSV (Symbol;Shares;AvgCost;PurchaseDate;TargetPrice;Currency). "
+        "Import a semicolon-separated CSV (Symbol;Shares;AvgCost;PurchaseDate;TargetPrice;Currency). "
         "Or build a portfolio manually via **+** and **Add symbol**."
     )
     uploaded_file = st.file_uploader(
-        "Choose file",
+        "Choose CSV file",
         type=["csv"],
         key=f"portfolio_upload_{st.session_state.uploader_key}",
     )
@@ -181,7 +181,7 @@ def render_toolbar_row():
         with col_upload:
             if st.button(
                 "",
-                help="Load portfolio from CSV file",
+                help="Import portfolio from CSV file",
                 use_container_width=True,
                 key="open_upload_dialog_btn",
                 icon=":material/upload_file:",
@@ -192,7 +192,7 @@ def render_toolbar_row():
     with col_refresh:
         refresh_clicked = st.button(
             "",
-            help="Refresh prices & analyst data",
+            help="Refresh financial data for current portfolio",
             use_container_width=True,
             key="toolbar_refresh_btn",
             icon=":material/sync:",

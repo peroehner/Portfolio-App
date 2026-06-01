@@ -53,7 +53,13 @@ APP_CSS = """
     }
     div:has(> .section-header-row-anchor) + div[data-testid="stHorizontalBlock"] {
         align-items: center !important;
-        margin-bottom: 0.35rem !important;
+        margin-top: 0 !important;
+        margin-bottom: 0.2rem !important;
+        padding-top: 0 !important;
+    }
+    div:has(> .section-header-row-anchor) {
+        margin: 0 !important;
+        padding: 0 !important;
     }
     div:has(> .section-header-row-anchor) + div[data-testid="stHorizontalBlock"]
         > div[data-testid="column"]:last-child {
@@ -102,35 +108,49 @@ APP_CSS = """
         border-left: 4px solid #0d9488 !important;
         margin-top: 0.45rem;
     }
+    .section-panel {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio),
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
-        padding-top: 0.15rem;
+        padding-top: 0 !important;
+        padding-bottom: 0.65rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) > div,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) > div {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        gap: 0.15rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stVerticalBlock"],
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stVerticalBlock"] {
+        gap: 0.15rem !important;
+        padding-top: 0 !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stMarkdown"]:has(.section-header),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stMarkdown"]:has(.section-header),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stMarkdownContainer"]:has(.section-header),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stMarkdownContainer"]:has(.section-header) {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stVerticalBlock"] > div:first-child,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stVerticalBlock"] > div:first-child {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="element-container"],
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="element-container"] {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
     }
     .section-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.65rem;
-        margin: 0.1rem 0 0.45rem 0;
-    }
-    .section-number {
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.55rem;
-        height: 1.55rem;
-        border-radius: 999px;
-        background: #111827;
-        color: #fff;
-        font-size: 0.78rem;
-        font-weight: 800;
-        line-height: 1;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) .section-number {
-        background: #2563eb;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) .section-number {
-        background: #0d9488;
+        margin: 0 0 0.25rem 0;
+        padding: 0;
     }
     .section-headings {
         min-width: 0;
@@ -143,7 +163,7 @@ APP_CSS = """
         line-height: 1.2;
     }
     .section-subtitle {
-        margin: 0.12rem 0 0 0;
+        margin: 0.05rem 0 0 0;
         font-size: 0.78rem;
         font-weight: 500;
         color: #6b7280;
@@ -635,9 +655,10 @@ APP_CSS = """
     }
     /* Technical analysis: single controls row */
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] {
+        --tech-controls-row-h: 2.15rem;
         align-items: center !important;
         flex-wrap: nowrap !important;
-        gap: 0.25rem !important;
+        gap: 0.3rem !important;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         display: flex !important;
@@ -646,15 +667,16 @@ APP_CSS = """
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stMarkdown"] p {
         margin: 0 !important;
-        line-height: 1.2 !important;
+        line-height: 1.35 !important;
         overflow: hidden;
     }
     .tech-trend-slot {
         display: inline-flex;
         align-items: center;
-        gap: 0.2rem;
-        font-size: 0.86rem !important;
-        line-height: 1.2;
+        gap: 0.35rem;
+        font-size: 0.78rem !important;
+        font-weight: 500;
+        line-height: 1.35;
         white-space: nowrap;
         max-width: 100%;
         overflow: hidden;
@@ -663,43 +685,45 @@ APP_CSS = """
         vertical-align: middle;
     }
     .tech-trend-slot,
-    .tech-trend-slot * {
-        font-size: 0.86rem !important;
-        line-height: 1.2 !important;
+    .tech-trend-slot *:not(.trend-icon) {
+        font-size: 0.78rem !important;
+        line-height: 1.35 !important;
     }
-    .tech-trend-slot.tech-trend-line {
-        font-size: 0.86rem !important;
-        line-height: 1.2 !important;
+    .tech-trend-slot.tech-trend-line.trend-bull {
+        color: #137333 !important;
     }
-    div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] .tech-trend-slot.tech-trend-line,
-    div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] .tech-trend-slot.tech-trend-line * {
-        font-size: 0.86rem !important;
-        line-height: 1.2 !important;
+    .tech-trend-slot.tech-trend-line.trend-bear {
+        color: #c5221f !important;
     }
     .tech-trend-slot b {
-        font-size: inherit;
+        font-size: inherit !important;
         font-weight: 600;
         line-height: inherit;
+        color: inherit;
     }
     .tech-trend-slot.tech-trend-empty {
-        color: #6e7781;
+        color: #6b7280 !important;
         font-style: italic;
     }
     .tech-trend-slot .trend-icon {
-        height: 1.35rem !important;
+        height: 1.65rem !important;
         width: auto;
-        margin-right: 0.2rem !important;
+        margin-right: 0 !important;
         flex-shrink: 0;
+        vertical-align: middle;
+        object-fit: contain;
+        border-radius: 4px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) [data-baseweb="select"] > div,
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) [data-baseweb="select"] > div {
-        min-height: 1.85rem !important;
-        height: 1.85rem !important;
-        font-size: 0.76rem !important;
+        min-height: var(--tech-controls-row-h) !important;
+        height: var(--tech-controls-row-h) !important;
+        font-size: 0.78rem !important;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) [data-baseweb="select"] span,
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) [data-baseweb="select"] span {
-        font-size: 0.76rem !important;
+        font-size: 0.78rem !important;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
         justify-content: flex-end !important;
@@ -718,8 +742,8 @@ APP_CSS = """
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        min-height: 1.85rem !important;
-        height: 1.85rem !important;
+        min-height: var(--tech-controls-row-h) !important;
+        height: var(--tech-controls-row-h) !important;
         width: 100% !important;
         padding: 0 !important;
         border-radius: 6px !important;
@@ -744,14 +768,14 @@ APP_CSS = """
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        min-height: 1.85rem !important;
-        height: 1.85rem !important;
+        min-height: var(--tech-controls-row-h) !important;
+        height: var(--tech-controls-row-h) !important;
         width: 100% !important;
         padding: 0 0.45rem !important;
         border-radius: 6px !important;
         border: 1px solid #d0d7de !important;
         background: #fff !important;
-        font-size: 0.76rem !important;
+        font-size: 0.78rem !important;
         box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06) !important;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6) .stButton > button:disabled {
@@ -759,8 +783,8 @@ APP_CSS = """
         background: #f6f8fa !important;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6) .stButton > button p {
-        font-size: 0.82rem !important;
-        line-height: 1.2 !important;
+        font-size: 0.78rem !important;
+        line-height: 1.35 !important;
         margin: 0 !important;
         white-space: nowrap;
     }

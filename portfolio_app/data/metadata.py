@@ -155,11 +155,11 @@ def portfolio_metadata_progress():
         )
         st.progress(
             min(1.0, done / total),
-            text=f"Loading analyst data: {done}/{total} · Next: {next_sym}",
+            text=f"Loading analyst estimates: {done}/{total} · Next: {next_sym}",
         )
     elif st.session_state.get("metadata_enriched"):
         notice_at = st.session_state.get("analyst_loaded_notice_at")
         if notice_at and (time.time() - notice_at) < ANALYST_LOADED_NOTICE_SEC:
-            st.progress(1.0, text="✓ Analyst data loaded.")
+            st.progress(1.0, text="✓ Analyst estimates loaded.")
         elif notice_at:
             st.session_state.pop("analyst_loaded_notice_at", None)

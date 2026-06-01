@@ -72,7 +72,7 @@ def load_portfolio_into_session(df_port, *, refetch_metadata: bool = True):
         metadata_map = metadata_map_from_results(st.session_state.all_results)
         valuation_map = valuation_map_from_results(st.session_state.all_results)
 
-    with st.spinner("Loading prices..."):
+    with st.spinner("Loading financial data..."):
         bulk_close = fetch_bulk_close(unique_symbols, TABLE_HISTORY_PERIOD)
         hist_by_symbol = build_hist_by_symbol(bulk_close, unique_symbols)
 

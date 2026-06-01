@@ -17,7 +17,7 @@ from portfolio_app.ui.toolbar import ensure_uploader_key, render_toolbar_row
 
 def run():
     st.set_page_config(
-        page_title="Personal Portfolio Screener",
+        page_title="Portfolio Compass",
         page_icon=PAGE_ICON,
         layout="wide",
     )
@@ -30,9 +30,8 @@ def run():
 
     with st.container(border=True):
         render_section_header(
-            number=1,
-            title="Portfolio screener",
-            subtitle="Compare holdings, targets, dividends, and valuation scores",
+            title="Portfolio Screener",
+            subtitle="Compose holdings & targets · Show trends returns & valuations",
             panel_class="section-panel-portfolio",
             account_in_corner=True,
         )
@@ -43,9 +42,8 @@ def run():
 
     with st.container(border=True):
         render_section_header(
-            number=2,
-            title="Technical analysis",
-            subtitle="Chart, trends, and Fibonacci for the selected symbol",
+            title="Technical Analysis",
+            subtitle="Time bound, chart, trends & Fibonacci · Analyse selected symbol · Export analytics for multi-selection",
             panel_class="section-panel-ta",
         )
         render_detail_panel()

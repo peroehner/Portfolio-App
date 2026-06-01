@@ -22,6 +22,7 @@ from portfolio_app.data.valuation_metadata import (
     prioritize_valuation_symbol,
 )
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
+from portfolio_app.ui.components import render_financial_data_loading_umbrella
 from portfolio_app.ui.portfolio_grid import portfolio_grid
 from portfolio_app.ui.toolbar import is_portfolio_more_open, render_portfolio_more_button
 
@@ -683,6 +684,7 @@ def render_portfolio_table_section():
     if not selection_df.empty:
         prepare_table_selection_before_render(selection_df)
 
+    render_financial_data_loading_umbrella()
     portfolio_metadata_progress()
     portfolio_valuation_progress()
 

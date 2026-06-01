@@ -4,10 +4,9 @@ import streamlit as st
 from portfolio_app.ui.user_sidebar import render_account_in_header
 
 
-def _section_header_html(*, number: int, title: str, subtitle: str) -> str:
+def _section_header_html(*, title: str, subtitle: str) -> str:
     return (
         f'<div class="section-header">'
-        f'<span class="section-number">{number}</span>'
         f'<div class="section-headings">'
         f'<p class="section-title">{title}</p>'
         f'<p class="section-subtitle">{subtitle}</p>'
@@ -26,7 +25,6 @@ def _render_panel_account_corner() -> None:
 
 def render_section_header(
     *,
-    number: int,
     title: str,
     subtitle: str,
     panel_class: str,
@@ -39,9 +37,9 @@ def render_section_header(
         st.markdown('<div class="section-header-row-anchor"></div>', unsafe_allow_html=True)
         title_col, account_col = st.columns([4.55, 1.45], gap="small", vertical_alignment="center")
         with title_col:
-            st.markdown(_section_header_html(number=number, title=title, subtitle=subtitle), unsafe_allow_html=True)
+            st.markdown(_section_header_html(title=title, subtitle=subtitle), unsafe_allow_html=True)
         with account_col:
             _render_panel_account_corner()
         return
 
-    st.markdown(_section_header_html(number=number, title=title, subtitle=subtitle), unsafe_allow_html=True)
+    st.markdown(_section_header_html(title=title, subtitle=subtitle), unsafe_allow_html=True)

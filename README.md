@@ -24,7 +24,8 @@ Holdings are stored in **SQLite** at `data/pero.db` (gitignored). Each user can 
 - **Portfolio bar** — switch portfolios, **rename**, **New** (empty), or **↺** reload from database.
 - **📁 CSV import** — choose a **portfolio name** (defaults to the file name). If that name already exists, you must confirm **replace** (holdings are overwritten).
 - **Build manually** — **New** → **ROI** view → **Add symbol** → edit cells → **Save portfolio**.
-- **ROI view** — edit user columns; Standard/Trends are read-only for analysis.
+- **ROI view** — AG Grid for selection; open **⋮** → **Edit portfolio rows** to change shares, cost, and targets.
+- **Table selection** — **Click** one row · **Shift+click** range · **Option/Ctrl+click** toggle · drives Technical Analysis and Export.
 
 ## Project layout
 
@@ -60,7 +61,8 @@ portfolio_app/
     user_sidebar.py       # Email identity
     toolbar.py            # Upload dialog, reset, refresh
     holdings.py           # Holdings draft/save helpers
-    table.py              # Analysis views; ROI inline edit, add symbol, row select
+    table.py              # Portfolio views; AG Grid selection; ROI editor
+    portfolio_grid/       # Custom AG Grid Streamlit component (bundled assets)
     portfolio_page.py     # KPI strip, analysis table
     detail_panel.py       # Chart, Fib window, export sidebar
     table_style.py        # Green/red cell gradients
@@ -81,5 +83,5 @@ Semicolon-separated (`;`), columns include: `Symbol`, `Shares`, `AvgCost`, `Purc
 ## Development notes
 
 - Fibonacci uses **T1** (strongest trend leg in the Re-Analyse window), not full-window high/low.
-- Table selection: click = select only that row, Shift = range, Alt/Option = toggle that row only.
+- Portfolio table uses a custom **AG Grid** component (`portfolio_grid/`); selection runs in the browser (click / Shift / Option).
 - Pause large feature work on `app.py` while refactor branches are active; branch from updated `main` for small fixes.

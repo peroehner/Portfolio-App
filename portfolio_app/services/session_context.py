@@ -138,7 +138,6 @@ def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True
     if previous_id and previous_id != active.portfolio_id:
         st.session_state.pop(f"holdings_draft_{previous_id}", None)
     st.session_state.pop(f"holdings_draft_{active.portfolio_id}", None)
-    st.session_state.pop("portfolio_table", None)
     st.session_state.pop("portfolio_grid", None)
     st.session_state.pop("portfolio_table_roi_editor", None)
     st.session_state.pop("selected_symbol", None)

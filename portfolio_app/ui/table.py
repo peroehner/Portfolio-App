@@ -24,10 +24,8 @@ from portfolio_app.data.valuation_metadata import (
 from portfolio_app.services.session_context import invalidate_analysis, load_active_portfolio
 from portfolio_app.ui.portfolio_grid import portfolio_grid
 from portfolio_app.ui.toolbar import is_portfolio_more_open
-from portfolio_app.ui.components import get_table_click_modifiers
 
 _PRESERVE_SELECTION_KEY = "_preserve_table_selection"
-_SKIP_SELECTION_APPLY_KEY = "_skip_table_selection_apply"
 from portfolio_app.ui.holdings import (
     ROI_EDITABLE_COLUMNS,
     append_symbol_to_draft,
@@ -41,67 +39,8 @@ from portfolio_app.ui.holdings import (
     set_holdings_draft,
     validate_roi_editor_df,
 )
-from portfolio_app.ui.table_style import gradient_backgrounds, style_signed_column
+from portfolio_app.ui.table_style import gradient_backgrounds
 
-
-
-def normalize_table_selection_rows(raw_rows, prev_rows, shift_held=False, alt_held=False):
-    """
-    Plain click -> select only that row (exclusive).
-    Shift+click -> contiguous range.
-    Alt/Option+click -> toggle one row on/off (multi-select).
-
-    Toggle-off and shift-range are inferred from the widget delta when modifier
-    keys are unavailable. Plain click is enforced when a new row is added without
-    Alt — even if the native multi-select widget keeps other rows selected.
-    """
-    new_rows = sorted({int(r) for r in raw_rows})
-    prev_rows = sorted({int(r) for r in (prev_rows or [])})
-
-    if not new_rows:
-        return []
-
-    prev_set = set(prev_rows)
-    new_set = set(new_rows)
-    added = new_set - prev_set
-    removed = prev_set - new_set
-    is_contiguous = new_rows[-1] - new_rows[0] + 1 == len(new_rows)
-
-    # Toggle off: widget dropped exactly one previously selected row.
-    if len(removed) == 1 and not added:
-        return new_rows
-
-    # Shift range: contiguous block grew by 2+ rows from the prior selection.
-    if (
-        prev_rows
-        and is_contiguous
-        and len(new_rows) >= 2
-        and prev_set.issubset(new_set)
-        and len(added) >= 2
-    ):
-        return new_rows
-    if shift_held and is_contiguous and len(new_rows) >= 2:
-        return new_rows
-
-    # Toggle on: one new row while keeping the rest (Option+click).
-    if len(added) == 1 and not removed and prev_set.issubset(new_set):
-        if alt_held:
-            return new_rows
-        if shift_held and is_contiguous:
-            return new_rows
-        if prev_rows:
-            return sorted(added)
-        return new_rows
-
-    # Exclusive: widget collapsed to a single row.
-    if len(new_rows) == 1:
-        return new_rows
-
-    # Exclusive: replaced selection with one new row (dropped others).
-    if len(added) == 1 and removed:
-        return sorted(added)
-
-    return new_rows
 
 
 def rows_to_symbols(row_indices, summary_df):
@@ -150,58 +89,6 @@ def _grid_selected_rows(table_key: str = "portfolio_grid") -> list[int]:
     return sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
 
 
-def _extract_selection_rows(src) -> list[int]:
-    if src is None:
-        return []
-    selection = src.get("selection") if hasattr(src, "get") else getattr(src, "selection", None)
-    if selection is None:
-        return []
-    rows = selection.get("rows") if hasattr(selection, "get") else getattr(selection, "rows", None)
-    if not rows:
-        return []
-    return sorted({int(r) for r in rows})
-
-
-def _widget_selection_rows(table_key: str) -> list[int]:
-    return _extract_selection_rows(st.session_state.get(table_key))
-
-
-def _sync_widget_selection(table_key: str, rows: list[int]) -> None:
-    if table_key != "portfolio_table":
-        return
-    st.session_state[table_key] = _selection_widget_state(rows)
-
-
-def _raw_selection_rows(table_key: str, event_state=None) -> list[int]:
-    """Read row indices — widget session state first (updated before script rerun)."""
-    for src in (st.session_state.get(table_key), event_state):
-        rows = _extract_selection_rows(src)
-        if rows:
-            return rows
-    return []
-
-
-def _selection_widget_state(rows: list[int]) -> dict:
-    return {"selection": {"rows": list(rows)}}
-
-
-def _pending_selection_key(table_key: str) -> str:
-    return f"_{table_key}_pending_rows"
-
-
-def _apply_pending_widget_selection(summary_df, table_key: str) -> bool:
-    """Apply normalized rows to widget state before st.dataframe (Streamlit requirement)."""
-    pending_key = _pending_selection_key(table_key)
-    pending = st.session_state.pop(pending_key, None)
-    if pending is None:
-        return False
-    rows = sorted({int(r) for r in pending})
-    commit_selection_state(rows, summary_df)
-    _sync_widget_selection(table_key, rows)
-    st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
-    return True
-
-
 def _technical_controls_changed() -> bool:
     """Detect TA control-only reruns to avoid mutating table selection."""
     current = {
@@ -218,82 +105,24 @@ def _technical_controls_changed() -> bool:
     return any(current.get(k) != previous.get(k) for k in current)
 
 
-def prepare_table_selection_before_render(summary_df, table_key: str = "portfolio_table") -> None:
-    """Apply pending corrections, preserve selection, or restore widget from stored rows."""
-    if _apply_pending_widget_selection(summary_df, table_key):
+def prepare_table_selection_before_render(summary_df) -> None:
+    """Preserve or clear AG Grid row selection across non-table reruns."""
+    if st.session_state.pop("clear_table_selection", False):
+        st.session_state.table_sel_rows = []
+        st.session_state.selected_symbols = []
+        st.session_state.pop("portfolio_grid", None)
         return
 
     if st.session_state.pop(_PRESERVE_SELECTION_KEY, False):
         prev_rows = st.session_state.get("table_sel_rows", [])
         if prev_rows:
             commit_selection_state(prev_rows, summary_df)
-            _sync_widget_selection(table_key, prev_rows)
-        st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
-        return
-
-    if st.session_state.pop("clear_table_selection", False):
-        st.session_state.table_sel_rows = []
-        st.session_state.selected_symbols = []
-        _sync_widget_selection(table_key, [])
-        st.session_state.pop("portfolio_grid", None)
         return
 
     if _technical_controls_changed():
         prev_rows = st.session_state.get("table_sel_rows", [])
         if prev_rows:
             commit_selection_state(prev_rows, summary_df)
-            _sync_widget_selection(table_key, prev_rows)
-        st.session_state[_SKIP_SELECTION_APPLY_KEY] = True
-        return
-
-
-def apply_table_selection_after_widget(
-    event,
-    summary_df,
-    table_key: str = "portfolio_table",
-) -> None:
-    """
-    Normalize selection from the dataframe's current event (after user click).
-    Must run after st.dataframe so the click is visible in widget state.
-    """
-    if st.session_state.pop(_SKIP_SELECTION_APPLY_KEY, False):
-        return
-
-    stored = sorted(int(r) for r in st.session_state.get("table_sel_rows", []))
-    widget = _widget_selection_rows(table_key)
-    raw_rows = _raw_selection_rows(table_key, event_state=event)
-    if not raw_rows:
-        raw_rows = widget
-
-    if not raw_rows:
-        if stored:
-            commit_selection_state([], summary_df)
-            if widget:
-                st.session_state[_pending_selection_key(table_key)] = []
-                st.rerun()
-        return
-
-    if raw_rows == stored and widget == stored:
-        return
-
-    prev_rows = stored
-    shift_held, alt_held = get_table_click_modifiers()
-    rows = normalize_table_selection_rows(
-        raw_rows, prev_rows, shift_held=shift_held, alt_held=alt_held
-    )
-    normalized = sorted({int(r) for r in rows})
-    canonical = sorted({int(r) for r in raw_rows})
-
-    if not normalized and not prev_rows:
-        return
-
-    changed = normalized != prev_rows
-    if changed:
-        commit_selection_state(rows, summary_df)
-
-    if normalized != canonical or (changed and normalized != widget):
-        st.session_state[_pending_selection_key(table_key)] = normalized
-        st.rerun()
 
 
 def _column_display_name(column: str) -> str:
@@ -329,10 +158,7 @@ def format_display_numerics(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_portfolio_table_column_config(columns, *, editable: bool = False):
     """
-    Column config; Symbol pinned. Consistent $ / % formats on numeric columns.
-
-    For st.dataframe (read-only), omit disabled= so every column can be sorted.
-    For st.data_editor, disabled= locks non-editable columns (and blocks their sort).
+    Column config for the ROI st.data_editor — disabled= locks non-editable columns.
     """
     config = {}
     if "Symbol" in columns:
@@ -410,6 +236,13 @@ def _format_grid_cell(column: str, value) -> str:
             return f"{float(value):.1f}"
         except (TypeError, ValueError):
             return str(value)
+    if column == "PurchaseDate":
+        if pd.isna(value):
+            return "-"
+        try:
+            return pd.Timestamp(value).strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            return str(value)
     return str(value)
 
 
@@ -430,17 +263,27 @@ def _gradient_columns_for_view(display_df: pd.DataFrame, cols) -> list[str]:
     ] + [c for c in TABLE_PNL_COLS if c in display_df.columns] + pscore_cols
 
 
-def _prepare_readonly_display_df(view_name, summary_df) -> tuple[pd.DataFrame, list[str], list[str]]:
-    cols = _view_columns(view_name, summary_df)
-    display_df = format_display_numerics(summary_df[cols].copy())
+def _prepare_grid_display_df(
+    view_name: str,
+    summary_df: pd.DataFrame,
+    holdings_df=None,
+) -> tuple[pd.DataFrame, list[str], list[str]]:
+    if view_name == "ROI":
+        display_df = _build_roi_display_df(summary_df, holdings_df)
+        skip_fillna = METADATA_COLS | METADATA_LATE_COLS
+    else:
+        cols = _view_columns(view_name, summary_df)
+        display_df = format_display_numerics(summary_df[cols].copy())
+        skip_fillna = METADATA_COLS | METADATA_LATE_COLS | VALUATION_COLS | VALUATION_LATE_COLS
 
-    skip_fillna = METADATA_COLS | METADATA_LATE_COLS | VALUATION_COLS | VALUATION_LATE_COLS
+    cols = list(display_df.columns)
     fill_cols = [
         c
         for c in TABLE_PERCENT_COLS + ["Div Yield"]
         if c in display_df.columns and c not in skip_fillna
     ]
     if fill_cols:
+        display_df = display_df.copy()
         display_df[fill_cols] = display_df[fill_cols].fillna(0)
 
     gradient_cols = _gradient_columns_for_view(display_df, cols)
@@ -617,13 +460,17 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
 
 
 def render_portfolio_table_grid(
-    summary_df,
     selection_df,
+    *,
+    summary_df,
     view_name="Standard",
+    holdings_df=None,
     table_key="portfolio_grid",
 ):
-    """AG Grid read-only table (Standard / Trends / Valuation Growth)."""
-    display_df, cols, gradient_cols = _prepare_readonly_display_df(view_name, summary_df)
+    """AG Grid table for all portfolio views (ROI read-only grid + analysis views)."""
+    display_df, cols, gradient_cols = _prepare_grid_display_df(
+        view_name, summary_df, holdings_df=holdings_df
+    )
 
     widget = st.session_state.get(table_key)
     if isinstance(widget, dict):
@@ -642,18 +489,12 @@ def render_portfolio_table_grid(
     apply_grid_selection(result, selection_df)
 
 
-def render_portfolio_table_readonly(
-    summary_df,
-    view_name,
-    selection_df,
-    table_key="portfolio_table",
-):
-    """Read-only AG Grid table (Standard / Trends / Valuation Growth)."""
+def render_portfolio_table_readonly(summary_df, view_name, selection_df):
+    """Read-only AG Grid (Standard / Trends / Valuation Growth)."""
     render_portfolio_table_grid(
-        summary_df,
         selection_df,
+        summary_df=summary_df,
         view_name=view_name,
-        table_key="portfolio_grid",
     )
 
 
@@ -673,61 +514,29 @@ def _build_roi_display_df(summary_df, holdings_df) -> pd.DataFrame:
     return format_display_numerics(display_df)
 
 
-def _style_roi_dataframe(display_df: pd.DataFrame):
-    """Same gradients/formatting as Standard/Trends for the sortable ROI view."""
-    cols = list(display_df.columns)
-    format_dict = get_table_format_dict(cols)
-    actual_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
-
-    skip_fillna = METADATA_COLS | METADATA_LATE_COLS
-    fill_cols = [
-        c
-        for c in TABLE_PERCENT_COLS + ["Div Yield"]
-        if c in display_df.columns and c not in skip_fillna
-    ]
-    out = display_df.copy()
-    if fill_cols:
-        out[fill_cols] = out[fill_cols].fillna(0)
-
-    gradient_cols = [
-        c
-        for c in TABLE_PERCENT_COLS
-        if c in out.columns
-        and c in actual_format_dict
-        and c not in TABLE_GRADIENT_EXCLUDE
-    ] + [c for c in TABLE_PNL_COLS if c in out.columns]
-    styled = out.style.format(actual_format_dict, na_rep="-").set_properties(
-        **{"background-color": "white", "color": "black"}
-    )
-    if gradient_cols:
-        styled = styled.apply(style_signed_column, subset=gradient_cols, axis=0)
-    return styled
-
-
-def _render_roi_dataframe(
-    display_df: pd.DataFrame,
+def render_portfolio_table_roi(
+    summary_df,
+    holdings_df,
     selection_df: pd.DataFrame,
-    table_key: str = "portfolio_table",
-):
-    """Sortable ROI table (st.dataframe — same key/state model as Standard/Trends)."""
-    cols = list(display_df.columns)
-    sel_rows = st.session_state.get("table_sel_rows", [])
-    selection_default = _selection_widget_state(sel_rows) if sel_rows else None
-    event = st.dataframe(
-        _style_roi_dataframe(display_df),
-        use_container_width=True,
-        hide_index=True,
-        column_config=get_portfolio_table_column_config(cols, editable=False),
-        on_select="rerun",
-        selection_mode="multi-row",
-        selection_default=selection_default,
-        key=table_key,
+) -> pd.DataFrame:
+    """
+    ROI view: AG Grid for selection/sorting; st.data_editor below when ⋮ is open.
+    """
+    display_df = _build_roi_display_df(summary_df, holdings_df)
+    render_portfolio_table_grid(
+        selection_df,
+        summary_df=summary_df,
+        view_name="ROI",
+        holdings_df=holdings_df,
     )
-    apply_table_selection_after_widget(event, selection_df, table_key=table_key)
+    if is_portfolio_more_open():
+        with st.expander("Edit portfolio rows", expanded=False):
+            return _render_roi_data_editor(display_df)
+    return display_df
 
 
 def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
-    """Editable ROI table when ⋮ menu is open (st.data_editor — limited column sort)."""
+    """Editable ROI table when ⋮ menu is open (st.data_editor)."""
     disabled = [c for c in display_df.columns if c not in ROI_EDITABLE_COLUMNS]
 
     st.markdown('<div class="roi-table-anchor"></div>', unsafe_allow_html=True)
@@ -750,24 +559,6 @@ def _render_roi_data_editor(display_df: pd.DataFrame) -> pd.DataFrame:
             st.warning(msg)
 
     return edited
-
-
-def render_portfolio_table_roi(
-    summary_df,
-    holdings_df,
-    selection_df: pd.DataFrame,
-    table_key: str = "portfolio_table",
-) -> pd.DataFrame:
-    """
-    ROI view: always show a sortable dataframe (like Standard/Trends).
-    When ⋮ is open, an edit table appears below for inline holdings changes.
-    """
-    display_df = _build_roi_display_df(summary_df, holdings_df)
-    _render_roi_dataframe(display_df, selection_df, table_key=table_key)
-    if is_portfolio_more_open():
-        with st.expander("Edit portfolio rows", expanded=False):
-            return _render_roi_data_editor(display_df)
-    return display_df
 
 
 def _selection_df_for_view(view_name: str, summary_df: pd.DataFrame, holdings_df) -> pd.DataFrame:
@@ -833,13 +624,9 @@ def render_portfolio_table_section():
             edited = holdings_df
         elif summary_df.empty:
             st.caption("Edit holdings below, then **Save portfolio** (prices load after save).")
-            edited = render_portfolio_table_roi(
-                summary_df, holdings_df, selection_df, table_key="portfolio_table"
-            )
+            edited = render_portfolio_table_roi(summary_df, holdings_df, selection_df)
         else:
-            edited = render_portfolio_table_roi(
-                summary_df, holdings_df, selection_df, table_key="portfolio_table"
-            )
+            edited = render_portfolio_table_roi(summary_df, holdings_df, selection_df)
         if save_clicked:
             roi_errors = validate_roi_editor_df(edited)
             if roi_errors:
@@ -864,9 +651,7 @@ def render_portfolio_table_section():
                 except Exception as e:
                     st.error(f"Could not save: {e}")
     elif not summary_df.empty:
-        render_portfolio_table_readonly(
-            summary_df, view_name, selection_df, table_key="portfolio_table"
-        )
+        render_portfolio_table_readonly(summary_df, view_name, selection_df)
     else:
         st.caption("Load symbols to see analysis views (Standard, Trends, Valuation Growth).")
 
@@ -884,7 +669,11 @@ def render_portfolio_table_section():
                 st.code("\n".join(holding_lines), language=None)
             for line in detail_lines:
                 st.caption(line)
-    elif view_name != "ROI":
+
+    table_visible = (view_name == "ROI" and has_holdings) or (
+        view_name != "ROI" and not summary_df.empty
+    )
+    if table_visible:
         st.caption(
             "**Click** = select only that row · **Shift+click** = range · "
             "**Option+click** = toggle that row only"

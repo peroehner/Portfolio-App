@@ -27,7 +27,6 @@ def _draft_key(portfolio_id: int) -> str:
 
 def clear_holdings_draft(portfolio_id: int):
     st.session_state.pop(_draft_key(portfolio_id), None)
-    st.session_state.pop("portfolio_table", None)
     st.session_state.pop("portfolio_grid", None)
     st.session_state.pop("portfolio_table_roi_editor", None)
 

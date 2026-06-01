@@ -62,6 +62,5 @@ def clear_session_keys(keys):
 def clear_portfolio_table_widget():
     import streamlit as st
 
-    for key in ("portfolio_table", "portfolio_grid"):
-        if key in st.session_state:
-            del st.session_state[key]
+    if "portfolio_grid" in st.session_state:
+        del st.session_state["portfolio_grid"]

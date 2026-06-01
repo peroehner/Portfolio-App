@@ -6,7 +6,6 @@ from portfolio_app.services.session_context import (
     consume_pending_portfolio_activation,
     load_active_portfolio,
 )
-from portfolio_app.ui.components import inject_table_click_modifiers
 from portfolio_app.ui.detail_panel import render_detail_panel
 from portfolio_app.ui.header import render_header
 from portfolio_app.ui.holdings import get_editable_holdings_df
@@ -24,7 +23,6 @@ def run():
     )
     inject_desktop_icons()
     inject_app_styles()
-    inject_table_click_modifiers()
 
     consume_pending_portfolio_activation()
 

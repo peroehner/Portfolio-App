@@ -571,21 +571,18 @@ def render_portfolio_table_roi(
 
 def _render_edit_portfolio_expander(
     portfolio_id: int,
-    view_name: str,
     summary_df: pd.DataFrame,
     holdings_df: pd.DataFrame,
     has_holdings: bool,
 ) -> tuple[bool, pd.DataFrame]:
-    """Add/delete/save bar and optional ROI editor inside ⋮ menu expander."""
+    """Add/delete/save bar and editable holdings table inside ⋮ menu expander."""
     edited = (
-        _build_roi_display_df(summary_df, holdings_df)
-        if view_name == "ROI" and has_holdings
-        else holdings_df
+        _build_roi_display_df(summary_df, holdings_df) if has_holdings else holdings_df
     )
     save_clicked = False
     with st.expander("Edit portfolio", expanded=False):
         save_clicked = _render_add_symbol_bar(portfolio_id)
-        if view_name == "ROI" and has_holdings:
+        if has_holdings:
             edited = _render_roi_data_editor(
                 _build_roi_display_df(summary_df, holdings_df)
             )
@@ -706,33 +703,30 @@ def render_portfolio_table_section():
 
     if is_portfolio_more_open():
         save_clicked, edited = _render_edit_portfolio_expander(
-            portfolio_id, view_name, summary_df, holdings_df, has_holdings
+            portfolio_id, summary_df, holdings_df, has_holdings
         )
 
-    if view_name == "ROI":
-        if save_clicked:
-            roi_errors = validate_roi_editor_df(edited)
-            if roi_errors:
-                st.error("Cannot save — complete all required fields in the ROI table:")
-                for msg in roi_errors:
-                    st.warning(msg)
-            else:
-                try:
-                    if summary_df.empty and has_holdings:
-                        holdings_out = display_df_to_holdings(edited)
-                    elif summary_df.empty:
-                        holdings_out = get_editable_holdings_df()
-                        if holdings_out.empty:
-                            raise ValueError("Add at least one symbol before saving.")
-                    else:
-                        holdings_out = display_df_to_holdings(edited)
-                    save_holdings_from_df(portfolio_id, holdings_out)
-                    st.success("Portfolio saved.")
-                    st.rerun()
-                except ValueError as e:
-                    st.error(str(e))
-                except Exception as e:
-                    st.error(f"Could not save: {e}")
+    if save_clicked:
+        roi_errors = validate_roi_editor_df(edited) if has_holdings else []
+        if roi_errors:
+            st.error("Cannot save — complete all required fields in the holdings table:")
+            for msg in roi_errors:
+                st.warning(msg)
+        else:
+            try:
+                if has_holdings:
+                    holdings_out = display_df_to_holdings(edited)
+                else:
+                    holdings_out = get_editable_holdings_df()
+                    if holdings_out.empty:
+                        raise ValueError("Add at least one symbol before saving.")
+                save_holdings_from_df(portfolio_id, holdings_out)
+                st.success("Portfolio saved.")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Could not save: {e}")
 
     if view_name == "Valuation Growth":
         results = st.session_state.get("all_results") or []

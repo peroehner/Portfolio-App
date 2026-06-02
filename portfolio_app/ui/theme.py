@@ -8,7 +8,7 @@ APP_CSS = """
     .stApp,
     [data-testid="stAppViewContainer"],
     section[data-testid="stMain"] {
-        background-color: #eef1f4 !important;
+        background-color: #f1f3f4 !important;
     }
     [data-testid="stMainBlockContainer"] {
         background-color: transparent !important;
@@ -38,7 +38,7 @@ APP_CSS = """
         min-width: 0;
     }
     .app-title {
-        font-size: 1.35rem;
+        font-size: 1.65rem;
         font-weight: 1000;
         color: #111827;
         margin: 0;
@@ -47,7 +47,8 @@ APP_CSS = """
         letter-spacing: -0.01em;
     }
     .app-subtitle {
-        margin: 0.2rem 0 0 0;
+        margin: 0.16rem 0 0 0;
+        font-size: 1.02rem;
     }
     .panel-account-label {
         font-size: 0.7rem;
@@ -106,24 +107,30 @@ APP_CSS = """
         border-top: 1px solid #e8ecf0;
         margin: 0.35rem 0 0.45rem 0;
     }
-    /* Section panels (bordered containers) — fill wrapper + inner blocks (grey page shows through gaps otherwise) */
-    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #ffffff !important;
-        border-color: #d8dee4 !important;
-        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 2px 8px rgba(16, 24, 40, 0.04);
-        border-radius: 8px;
+    /* Section cards in Streamlit 1.57: border containers are stVerticalBlock nodes. */
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio),
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) {
+        background-color: #f8f9fa !important;
+        border: 1px solid #dadce0 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 1px 2px rgba(60, 64, 67, 0.12);
+        padding: 10px 12px 14px 12px !important;
     }
-    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] > div,
-    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"],
-    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stLayoutWrapper"],
-    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="element-container"] {
-        background-color: #ffffff !important;
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) > div,
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) > div,
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stVerticalBlock"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stVerticalBlock"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stHorizontalBlock"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="element-container"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="element-container"] {
+        background-color: #f8f9fa !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) {
         border-left: 4px solid #2563eb !important;
         margin-bottom: 0.35rem;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) {
         border-left: 4px solid #0d9488 !important;
         margin-top: 0.45rem;
     }
@@ -134,36 +141,36 @@ APP_CSS = """
         padding: 0 !important;
         overflow: hidden !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio),
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) {
         padding-top: 0 !important;
         padding-bottom: 0.65rem !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) > div,
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) > div {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) > div,
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) > div {
         padding-top: 0 !important;
         padding-bottom: 0 !important;
         gap: 0.15rem !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stVerticalBlock"],
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stVerticalBlock"] {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stVerticalBlock"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stVerticalBlock"] {
         gap: 0.15rem !important;
         padding-top: 0 !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stMarkdown"]:has(.section-header),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stMarkdown"]:has(.section-header),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stMarkdownContainer"]:has(.section-header),
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stMarkdownContainer"]:has(.section-header) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stMarkdown"]:has(.section-header),
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stMarkdown"]:has(.section-header),
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stMarkdownContainer"]:has(.section-header),
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stMarkdownContainer"]:has(.section-header) {
         margin: 0 !important;
         padding: 0 !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="stVerticalBlock"] > div:first-child,
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="stVerticalBlock"] > div:first-child {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="stVerticalBlock"] > div:first-child,
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="stVerticalBlock"] > div:first-child {
         margin-top: 0 !important;
         padding-top: 0 !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) [data-testid="element-container"],
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) [data-testid="element-container"] {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-portfolio) [data-testid="element-container"],
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .section-panel-ta) [data-testid="element-container"] {
         padding-top: 0 !important;
         margin-top: 0 !important;
     }

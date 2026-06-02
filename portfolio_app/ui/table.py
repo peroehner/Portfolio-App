@@ -236,53 +236,44 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
     return config
 
 
-def _format_grid_cell(column: str, value) -> str:
-    """Display strings for AG Grid cells."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return "-"
-    if column in TABLE_CURRENCY_COLS:
-        try:
-            return f"${float(value):,.2f}"
-        except (TypeError, ValueError):
-            return str(value)
-    if column in TABLE_PERCENT_COLS:
-        try:
-            return f"{float(value):.2f}%"
-        except (TypeError, ValueError):
-            return str(value)
-    if column == "Div Yield":
-        try:
-            return f"{float(value):.1f}%"
-        except (TypeError, ValueError):
-            return str(value)
-    if column == "Shares":
-        try:
-            return f"{float(value):,.2f}"
-        except (TypeError, ValueError):
-            return str(value)
-    if column in {"Trailing P/E", "Forward P/E", "PEG"}:
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return str(value)
-    if column in {"PEG P-Score", "Rev P-Score", "Margin P-Score"}:
-        try:
-            return f"{float(value):.0f}"
-        except (TypeError, ValueError):
-            return str(value)
-    if column == "P-Score":
-        try:
-            return f"{float(value):.1f}"
-        except (TypeError, ValueError):
-            return str(value)
+def _grid_cell_format(column: str) -> str | None:
+    """AG Grid valueFormatter key — None means show raw text."""
+    if column in {"Symbol", "Grade", "Currency"}:
+        return None
     if column == "PurchaseDate":
-        if pd.isna(value):
-            return "-"
+        return "date"
+    if column in TABLE_CURRENCY_COLS:
+        return "currency"
+    if column in TABLE_PERCENT_COLS:
+        return "percent2"
+    if column == "Div Yield":
+        return "percent1"
+    if column == "Shares":
+        return "shares"
+    if column in {"Trailing P/E", "Forward P/E", "PEG"}:
+        return "number2"
+    if column in {"PEG P-Score", "Rev P-Score", "Margin P-Score"}:
+        return "number0"
+    if column == "P-Score":
+        return "number1"
+    return None
+
+
+def _grid_cell_value(column: str, value):
+    """Raw cell values for AG Grid — numeric columns stay numeric so sort works."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if column in {"Symbol", "Grade", "Currency"}:
+        return str(value)
+    if column == "PurchaseDate":
         try:
             return pd.Timestamp(value).strftime("%Y-%m-%d")
         except (TypeError, ValueError):
-            return str(value)
-    return str(value)
+            return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _gradient_columns_for_view(display_df: pd.DataFrame, cols) -> list[str]:
@@ -345,7 +336,7 @@ def _rows_for_grid(display_df: pd.DataFrame, gradient_cols: list[str]) -> list[d
         if styles:
             rec["__styles"] = styles
         for col in display_df.columns:
-            rec[col] = _format_grid_cell(col, row[col])
+            rec[col] = _grid_cell_value(col, row[col])
         records.append(rec)
     return records
 
@@ -364,6 +355,9 @@ def _grid_column_defs(columns, gradient_cols) -> list[dict]:
         }
         if col in gradient_set:
             spec["gradient"] = True
+        cell_format = _grid_cell_format(col)
+        if cell_format:
+            spec["cellFormat"] = cell_format
         if col == "Symbol":
             spec["pinned"] = "left"
             spec["flex"] = 0
@@ -494,7 +488,8 @@ def _render_add_symbol_bar(portfolio_id: int) -> bool:
             )
             set_holdings_draft(portfolio_id, updated)
             invalidate_analysis(refetch_metadata=False)
-            st.session_state.portfolio_table_view = "ROI"
+            # Defer tab switch until next run (before the radio widget is created).
+            st.session_state["_pending_portfolio_table_view"] = "ROI"
             st.success(
                 f"Added {normalized} ({currency}). Fill in shares/cost, then Save portfolio."
             )
@@ -655,6 +650,9 @@ def render_portfolio_table_section():
         summary_df = pd.DataFrame()
 
     view_options = list(TABLE_VIEW_COLUMNS.keys())
+    pending_view = st.session_state.pop("_pending_portfolio_table_view", None)
+    if pending_view in view_options:
+        st.session_state.portfolio_table_view = pending_view
     default_view = st.session_state.get("portfolio_table_view", view_options[0])
     if default_view not in view_options:
         default_view = view_options[0]
@@ -684,7 +682,7 @@ def render_portfolio_table_section():
     if not selection_df.empty:
         prepare_table_selection_before_render(selection_df)
 
-    render_financial_data_loading_umbrella()
+    render_financial_data_loading_umbrella(view_name)
     portfolio_metadata_progress()
     portfolio_valuation_progress()
 

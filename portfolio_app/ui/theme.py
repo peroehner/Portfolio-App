@@ -4,6 +4,15 @@ import streamlit as st
 APP_CSS = """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
+    /* Page canvas — soft grey so bordered panels read as white cards */
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    section[data-testid="stMain"] {
+        background-color: #eef1f4 !important;
+    }
+    [data-testid="stMainBlockContainer"] {
+        background-color: transparent !important;
+    }
     /* Compact page chrome — more table visible above the fold */
     .block-container {
         padding-top: 0.5rem !important;
@@ -97,14 +106,24 @@ APP_CSS = """
         border-top: 1px solid #e8ecf0;
         margin: 0.35rem 0 0.45rem 0;
     }
-    /* Section panels (bordered containers) */
+    /* Section panels (bordered containers) — fill wrapper + inner blocks (grey page shows through gaps otherwise) */
+    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #ffffff !important;
+        border-color: #d8dee4 !important;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 2px 8px rgba(16, 24, 40, 0.04);
+        border-radius: 8px;
+    }
+    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] > div,
+    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"],
+    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stLayoutWrapper"],
+    [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] [data-testid="element-container"] {
+        background-color: #ffffff !important;
+    }
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-portfolio) {
-        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
         border-left: 4px solid #2563eb !important;
         margin-bottom: 0.35rem;
     }
     div[data-testid="stVerticalBlockBorderWrapper"]:has(.section-panel-ta) {
-        background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
         border-left: 4px solid #0d9488 !important;
         margin-top: 0.45rem;
     }

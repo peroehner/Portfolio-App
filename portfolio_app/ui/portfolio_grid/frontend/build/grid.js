@@ -56,11 +56,76 @@
     return { backgroundColor: "white", color: "black" };
   }
 
+  function formatCellValue(value, format) {
+    if (value == null || value === "") {
+      return "-";
+    }
+    if (format === "date" || format === "text") {
+      return String(value);
+    }
+    var n = Number(value);
+    if (isNaN(n)) {
+      return String(value);
+    }
+    if (format === "currency") {
+      return (
+        "$" +
+        n.toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    }
+    if (format === "percent2") {
+      return n.toFixed(2) + "%";
+    }
+    if (format === "percent1") {
+      return n.toFixed(1) + "%";
+    }
+    if (format === "shares") {
+      return n.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+    if (format === "number2") {
+      return n.toFixed(2);
+    }
+    if (format === "number0") {
+      return n.toFixed(0);
+    }
+    if (format === "number1") {
+      return n.toFixed(1);
+    }
+    return String(value);
+  }
+
   function enrichColumnDefs(columnDefs) {
     return (columnDefs || []).map(function (col) {
       var next = Object.assign({}, col);
       if (next.gradient) {
         next.cellStyle = gradientCellStyle;
+      }
+      if (next.cellFormat) {
+        var fmt = next.cellFormat;
+        delete next.cellFormat;
+        next.valueFormatter = function (params) {
+          return formatCellValue(params.value, fmt);
+        };
+        if (fmt !== "date" && fmt !== "text") {
+          next.type = "numericColumn";
+          next.comparator = function (valueA, valueB) {
+            var a = valueA == null || valueA === "" ? null : Number(valueA);
+            var b = valueB == null || valueB === "" ? null : Number(valueB);
+            if (a == null && b == null) return 0;
+            if (a == null) return 1;
+            if (b == null) return -1;
+            if (isNaN(a) && isNaN(b)) return 0;
+            if (isNaN(a)) return 1;
+            if (isNaN(b)) return -1;
+            return a - b;
+          };
+        }
       }
       return next;
     });

@@ -12,18 +12,23 @@ def mark_preserve_table_selection() -> None:
     st.session_state["_preserve_table_selection"] = True
 
 
-def is_financial_data_background_loading() -> bool:
-    """True while analyst or valuation background queues still have symbols."""
+def is_financial_data_background_loading(view_name: str = "") -> bool:
+    """True while visible financial background loaders still have pending symbols."""
     if st.session_state.get("metadata_bg_active") and st.session_state.get("metadata_queue"):
         return True
-    if st.session_state.get("valuation_bg_active") and st.session_state.get("valuation_queue"):
+    show_valuation = view_name == "Valuation Growth"
+    if (
+        show_valuation
+        and st.session_state.get("valuation_bg_active")
+        and st.session_state.get("valuation_queue")
+    ):
         return True
     return False
 
 
-def render_financial_data_loading_umbrella() -> None:
+def render_financial_data_loading_umbrella(view_name: str = "") -> None:
     """Overall loading label above detailed analyst/valuation progress bars."""
-    if is_financial_data_background_loading():
+    if is_financial_data_background_loading(view_name):
         st.caption("Loading financial data...")
 
 

@@ -37,7 +37,6 @@ def _on_portfolio_selected() -> None:
     switched = svc.load_portfolio(user.id, options[picked])
     if switched:
         activate_portfolio(switched, refetch_metadata=True)
-        st.rerun()
 
 
 def _kpi_pct_vs_cost_html(amount: float, cost: float) -> str:

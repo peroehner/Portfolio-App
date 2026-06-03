@@ -9,7 +9,7 @@ from portfolio_app.config import (
     METADATA_POLL_SECONDS,
 )
 from portfolio_app.analysis.portfolio_build import compute_total_depot_div_income
-from portfolio_app.analysis.returns import compute_annual_div_income
+from portfolio_app.analysis.returns import compute_annual_div_income, value_to_target_gap_pct
 from portfolio_app.data.market_data import get_symbol_metadata
 from portfolio_app.ui.components import mark_preserve_table_selection
 
@@ -22,7 +22,14 @@ def apply_metadata_to_item(item, est_target, pct_change, div_yield):
     item["data"]["Est Target"] = est_target
     item["data"]["Upside %"] = ((est_target / price) - 1) * 100 if est_target and price else 0.0
     if est_target and price:
-        item["data"]["∆ Act-Est Target %"] = ((price - est_target) / price * 100)
+        shares = item["data"].get("Shares")
+        try:
+            sh = float(shares) if shares is not None else 0.0
+        except (TypeError, ValueError):
+            sh = 0.0
+        position_value = sh * float(price) if sh > 0 else float(price)
+        est_val = sh * float(est_target) if sh > 0 else float(est_target)
+        item["data"]["∆ Act-Est Target %"] = value_to_target_gap_pct(position_value, est_val)
     else:
         item["data"]["∆ Act-Est Target %"] = None
     shares = item["data"].get("Shares")

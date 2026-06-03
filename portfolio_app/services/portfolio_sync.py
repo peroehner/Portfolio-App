@@ -11,6 +11,7 @@ from portfolio_app.analysis.returns import (
     compute_annual_div_income,
     compute_position_cagr,
     holding_days_since_purchase,
+    value_to_target_gap_pct,
 )
 from portfolio_app.analysis.valuation_scores import (
     COL_FORWARD_PE,
@@ -163,11 +164,13 @@ def build_portfolio_results_from_snapshots(
             total_depot_value += current_val
             diff_target_abs = abs(target - price)
             diff_target_pct = abs(target - price) / price if price != 0 else 0
-            act_target_delta_pct = ((price - target) / price * 100) if price != 0 else 0.0
-            if est_target is not None and est_target:
-                act_est_target_delta_pct = ((price - est_target) / price * 100)
-            else:
-                act_est_target_delta_pct = None
+            act_target_delta_pct = value_to_target_gap_pct(current_val, current_target)
+            est_target_val = (
+                current_shares * float(est_target)
+                if est_target is not None and est_target
+                else None
+            )
+            act_est_target_delta_pct = value_to_target_gap_pct(current_val, est_target_val)
             total_pct = ((current_val / current_cost) - 1) * 100 if current_cost else None
             total_dollar = current_val - current_cost
             cagr = compute_position_cagr(current_val, current_cost, days_held)

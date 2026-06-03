@@ -60,8 +60,8 @@ TABLE_VIEW_COLUMNS = {
     ],
 }
 
-# ROI pinned footer — column totals (headers: Div $, Invest, Value, Tgt Val, Est Val)
-ROI_SUM_COLUMNS = (
+# ROI pinned footer — sum these $ columns; Δ Tgt% / Δ Est% are derived from totals (see table.py)
+ROI_FOOTER_SUM_COLUMNS = (
     "Div Income",
     "Invest",
     "Value",

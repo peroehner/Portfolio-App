@@ -20,6 +20,7 @@ __all__ = [
     "holding_days_since_purchase",
     "normalize_dividend_yield",
     "period_return",
+    "value_to_target_gap_pct",
 ]
 
 
@@ -131,6 +132,24 @@ def compute_position_cagr(
     if not math.isfinite(cagr) or abs(cagr) > MAX_CAGR_MAGNITUDE:
         return None
     return round(cagr, 2)
+
+
+def value_to_target_gap_pct(value, target) -> float | None:
+    """
+    Gap from current value toward a target price, as % of value.
+
+    Positive when value is below target (still below goal); negative when above.
+    """
+    if value is None or target is None:
+        return None
+    try:
+        v = float(value)
+        t = float(target)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0 or pd.isna(v) or pd.isna(t):
+        return None
+    return (t - v) / v * 100.0
 
 
 def daily_change_pct(close_series):

@@ -97,6 +97,18 @@
         })
       );
     }
+    if (format === "currency0") {
+      return (
+        "$" +
+        n.toLocaleString("en-US", {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        })
+      );
+    }
+    if (format === "percent0") {
+      return Math.round(n) + "%";
+    }
     if (format === "percent2") {
       return n.toFixed(2) + "%";
     }

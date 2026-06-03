@@ -10,11 +10,12 @@ from portfolio_app.config import (
     TABLE_NUMBER_COLUMN_FORMAT,
     TABLE_PERCENT_COLS,
     TABLE_PNL_COLS,
-    ROI_SUM_COLUMNS,
+    ROI_FOOTER_SUM_COLUMNS,
     TABLE_VIEW_COLUMNS,
     VALUATION_COLS,
     VALUATION_LATE_COLS,
 )
+from portfolio_app.analysis.returns import value_to_target_gap_pct
 from portfolio_app.data.market_data import validate_symbol
 from portfolio_app.data.portfolio_loader import parse_shares_number
 from portfolio_app.data.metadata import portfolio_metadata_progress, prioritize_metadata_symbol
@@ -184,8 +185,16 @@ def _column_display_name(column: str) -> str:
     return labels.get(column, column)
 
 
+def _gap_pct_series(value: pd.Series, target: pd.Series) -> pd.Series:
+    """Vectorized value_to_target_gap_pct — matches Total row logic."""
+    v = pd.to_numeric(value, errors="coerce")
+    t = pd.to_numeric(target, errors="coerce")
+    gap = (t - v) / v * 100.0
+    return gap.where((v > 0) & v.notna() & t.notna())
+
+
 def enrich_roi_calculated_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """ROI-only position $ columns from shares × price / cost / targets."""
+    """ROI-only $ columns and Δ Tgt% / Δ Est% from Value vs target $ totals."""
     if df is None or df.empty:
         return df
     out = df.copy()
@@ -198,6 +207,8 @@ def enrich_roi_calculated_columns(df: pd.DataFrame) -> pd.DataFrame:
     out["Invest"] = shares * cost
     out["📈 Target Val"] = shares * target
     out["Est Target Val"] = shares * est_target
+    out["∆ Act-Target %"] = _gap_pct_series(out["Value"], out["📈 Target Val"])
+    out["∆ Act-Est Target %"] = _gap_pct_series(out["Value"], out["Est Target Val"])
     return out
 
 
@@ -305,12 +316,22 @@ def get_portfolio_table_column_config(columns, *, editable: bool = False):
     return config
 
 
+_ROI_COMPACT_CURRENCY_COLS = {
+    "Value", "Invest", "Div Income", "📈 Target Val", "Est Target Val",
+}
+_ROI_WHOLE_PERCENT_COLS = {"∆ Act-Target %", "∆ Act-Est Target %"}
+
+
 def _grid_cell_format(column: str) -> str | None:
     """AG Grid valueFormatter key — None means show raw text."""
     if column in {"Symbol", "Grade", "Currency"}:
         return None
     if column == "PurchaseDate":
         return "date"
+    if column in _ROI_COMPACT_CURRENCY_COLS:
+        return "currency0"
+    if column in _ROI_WHOLE_PERCENT_COLS:
+        return "percent0"
     if column in TABLE_CURRENCY_COLS:
         return "currency"
     if column in TABLE_PERCENT_COLS:
@@ -392,23 +413,38 @@ def _prepare_grid_display_df(
 def _roi_pinned_bottom_row(
     display_df: pd.DataFrame, columns: list[str] | None = None
 ) -> dict | None:
-    """Footer row with sums for Div Income, Invest, Value, target/est $ totals."""
+    """Footer row: Total $ sums plus portfolio Δ Tgt% / Δ Est% from value vs target totals."""
     if display_df is None or display_df.empty:
         return None
     cols = columns if columns is not None else list(display_df.columns)
-    row: dict = {"Symbol": "Sum", "__isFooter": True}
+    row: dict = {"Symbol": "Total", "__isFooter": True}
     for col in cols:
         if col != "Symbol":
             row[col] = None
-    has_sum = False
-    for col in ROI_SUM_COLUMNS:
+    has_content = False
+    for col in ROI_FOOTER_SUM_COLUMNS:
         if col not in display_df.columns:
             continue
         total = pd.to_numeric(display_df[col], errors="coerce").sum(min_count=1)
         if pd.notna(total):
             row[col] = float(total)
-            has_sum = True
-    return row if has_sum else None
+            has_content = True
+
+    total_value = row.get("Value")
+    total_tgt_val = row.get("📈 Target Val")
+    total_est_val = row.get("Est Target Val")
+    if total_value is not None and total_tgt_val is not None:
+        tgt_pct = value_to_target_gap_pct(float(total_value), float(total_tgt_val))
+        if tgt_pct is not None:
+            row["∆ Act-Target %"] = tgt_pct
+            has_content = True
+    if total_value is not None and total_est_val is not None:
+        est_pct = value_to_target_gap_pct(float(total_value), float(total_est_val))
+        if est_pct is not None:
+            row["∆ Act-Est Target %"] = est_pct
+            has_content = True
+
+    return row if has_content else None
 
 
 def _rows_for_grid(display_df: pd.DataFrame, gradient_cols: list[str]) -> list[dict]:

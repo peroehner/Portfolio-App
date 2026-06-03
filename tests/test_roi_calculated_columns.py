@@ -3,10 +3,34 @@ import unittest
 
 import pandas as pd
 
+from portfolio_app.analysis.returns import value_to_target_gap_pct
 from portfolio_app.ui.table import enrich_roi_calculated_columns, _roi_pinned_bottom_row
 
 
 class RoiCalculatedColumnsTestCase(unittest.TestCase):
+    def test_roi_row_gap_pct_from_position_values(self):
+        df = enrich_roi_calculated_columns(
+            pd.DataFrame(
+                [
+                    {
+                        "Symbol": "NET",
+                        "Shares": 100.0,
+                        "🌐 Price": 1908.62,
+                        "Cost/Share": 100.0,
+                        "📈 Target": 1820.0,
+                        "Est Target": 1639.24,
+                        "∆ Act-Target %": 4.64,
+                        "∆ Act-Est Target %": 14.11,
+                    },
+                ]
+            )
+        )
+        row = df.iloc[0]
+        self.assertAlmostEqual(190862.0, row["Value"])
+        self.assertAlmostEqual(182000.0, row["📈 Target Val"])
+        self.assertAlmostEqual(-4.64, row["∆ Act-Target %"], places=2)
+        self.assertAlmostEqual(-14.11, row["∆ Act-Est Target %"], places=2)
+
     def test_value_invest_and_target_vals(self):
         df = pd.DataFrame(
             [
@@ -53,12 +77,18 @@ class RoiCalculatedColumnsTestCase(unittest.TestCase):
             )
         )
         footer = _roi_pinned_bottom_row(df)
-        self.assertEqual("Sum", footer["Symbol"])
+        self.assertEqual("Total", footer["Symbol"])
         self.assertEqual(75.0, footer["Div Income"])
         self.assertEqual(1550.0, footer["Invest"])
         self.assertEqual(2000.0, footer["Value"])
         self.assertEqual(2450.0, footer["📈 Target Val"])
         self.assertEqual(2200.0, footer["Est Target Val"])
+        self.assertAlmostEqual(22.5, footer["∆ Act-Target %"])
+        self.assertAlmostEqual(10.0, footer["∆ Act-Est Target %"])
+
+    def test_value_to_target_gap_pct_sign(self):
+        self.assertAlmostEqual(10.0, value_to_target_gap_pct(100.0, 110.0))
+        self.assertAlmostEqual(-10.0, value_to_target_gap_pct(100.0, 90.0))
 
 
 if __name__ == "__main__":

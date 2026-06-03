@@ -11,20 +11,31 @@ from portfolio_app.services.session_context import (
 from portfolio_app.services.user_identity_service import get_user_identity_service
 
 _MANUAL_ACCOUNT_OPTION = "Use another email…"
+_PENDING_USER_SWITCH_KEY = "_pending_user_switch_email"
 
 
-def _switch_session_user(email: str):
+def _queue_user_switch(email: str) -> None:
+    """Defer switch to the next run so widget keys are never mutated after render."""
+    st.session_state[_PENDING_USER_SWITCH_KEY] = email
+    st.rerun()
+
+
+def _apply_pending_user_switch() -> None:
+    """Run before header widgets — Streamlit forbids mutating widget keys after draw."""
+    pending = st.session_state.pop(_PENDING_USER_SWITCH_KEY, None)
+    if not pending:
+        return
     identity = get_user_identity_service()
-    ok, err = identity.validate_email(email)
+    ok, err = identity.validate_email(pending)
     if not ok:
         st.warning(err)
         return
-    normalized = identity.normalize_email(email)
+    normalized = identity.normalize_email(pending)
     if normalized == get_session_email():
         return
     if switch_session_user(normalized):
-        st.session_state["header_user_select"] = normalized
         st.session_state.pop("_account_picked_manual", None)
+        st.session_state["_force_header_user_select"] = normalized
         st.rerun()
 
 
@@ -56,6 +67,12 @@ def _render_identity_status_hint() -> None:
 
 def render_account_in_header():
     """Compact user switcher; manual email entry only for 'Use another email…'."""
+    _apply_pending_user_switch()
+
+    forced = st.session_state.pop("_force_header_user_select", None)
+    if forced is not None:
+        st.session_state["header_user_select"] = forced
+
     current_email = get_session_email()
     options = _account_options(current_email)
 
@@ -93,8 +110,8 @@ def render_account_in_header():
             )
             apply_switch = st.form_submit_button("Switch")
         if apply_switch:
-            _switch_session_user(manual)
+            _queue_user_switch(manual)
         return
 
     if selected != current_email:
-        _switch_session_user(selected)
+        _queue_user_switch(selected)

@@ -32,6 +32,10 @@ COLUMN_SOURCES = {
     "Ø CAGR": ColumnSource.CALCULATED,
     "Target %": ColumnSource.CALCULATED,
     "Target $": ColumnSource.CALCULATED,
+    "Value": ColumnSource.CALCULATED,
+    "Invest": ColumnSource.CALCULATED,
+    "📈 Target Val": ColumnSource.CALCULATED,
+    "Est Target Val": ColumnSource.CALCULATED,
     "∆ Act-Target %": ColumnSource.CALCULATED,
     "∆ Act-Est Target %": ColumnSource.CALCULATED,
     "Trailing P/E": ColumnSource.ANALYST,
@@ -56,7 +60,7 @@ USER_EDITABLE_COLUMNS = (
 )
 
 SOURCE_LEGEND = {
-    ColumnSource.USER: "Your data (editable in ROI view)",
+    ColumnSource.USER: "Your data (editable in Edit portfolio)",
     ColumnSource.MARKET: "Live market data (yfinance)",
     ColumnSource.ANALYST: "Analyst estimates (yfinance)",
     ColumnSource.CALCULATED: "Computed from your inputs + market data",

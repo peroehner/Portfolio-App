@@ -404,16 +404,42 @@ APP_CSS = """
         display: flex !important;
         align-items: center !important;
     }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-toolbar-slot) {
+        height: auto !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+    }
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-toolbar-slot) [data-testid="element-container"],
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-toolbar-slot) [data-testid="stHtml"],
+    div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.kpi-toolbar-slot) [data-testid="stHtml"] > div {
+        height: auto !important;
+        min-height: var(--portfolio-toolbar-h) !important;
+        max-height: none !important;
+    }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] .kpi-toolbar-slot {
         width: 100%;
-        height: var(--portfolio-toolbar-h);
         min-height: var(--portfolio-toolbar-h);
-        max-height: var(--portfolio-toolbar-h);
+        height: auto;
+        max-height: none;
         display: flex;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.08rem;
         margin: 0;
         padding: 0;
         box-sizing: border-box;
+    }
+    .kpi-sync-footnote {
+        font-size: 0.58rem;
+        font-weight: 500;
+        color: #6e7781;
+        text-align: right;
+        line-height: 1.1;
+        padding: 0 0.45rem 0 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 0;
     }
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"],
     div:has(> .portfolio-toolbar-anchor) + div[data-testid="stHorizontalBlock"] label[data-testid="stWidgetLabel"] {
@@ -495,6 +521,125 @@ APP_CSS = """
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+    /* Second toolbar row: Portfolio (DB) + File (CSV) when ⋮ expanded */
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] {
+        --portfolio-toolbar-h: 2.25rem;
+        align-items: center !important;
+        gap: 0.35rem !important;
+        margin-top: 0.2rem !important;
+        margin-bottom: 0.15rem !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+    }
+    /* Shrink side columns; spacer column absorbs remaining width */
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child,
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        width: auto !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {
+        justify-content: flex-start !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        justify-content: flex-end !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] {
+        gap: 0.25rem !important;
+        width: fit-content !important;
+        max-width: 100% !important;
+        flex: 0 0 auto !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.stButton),
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > div[data-testid="column"]:has(.stDownloadButton) {
+        flex: 0 0 var(--portfolio-toolbar-h) !important;
+        min-width: var(--portfolio-toolbar-h) !important;
+        max-width: var(--portfolio-toolbar-h) !important;
+        width: var(--portfolio-toolbar-h) !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    /* Portfolio: icon sub-row only as wide as its buttons */
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child [data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child > div > [data-testid="stHorizontalBlock"] {
+        width: fit-content !important;
+        max-width: 100% !important;
+        flex: 0 0 auto !important;
+        justify-content: flex-start !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        display: flex !important;
+        justify-content: flex-end !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child > div {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: flex-end !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child > div > [data-testid="stHorizontalBlock"] {
+        width: fit-content !important;
+        flex: 0 0 auto !important;
+        margin-left: auto !important;
+        justify-content: flex-end !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] .stButton > button,
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] .stDownloadButton > button {
+        min-height: var(--portfolio-toolbar-h) !important;
+        height: var(--portfolio-toolbar-h) !important;
+        border-radius: 6px !important;
+        border: 1px solid #d0d7de !important;
+        background: #fff !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] .portfolio-toolbar-group-label {
+        display: block;
+        font-size: 0.62rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #57606a;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child .portfolio-toolbar-group-label {
+        color: #0969da;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child .portfolio-toolbar-group-label {
+        color: #8250df;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child .stButton > button,
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child .stDownloadButton > button {
+        border-color: #54aeff66 !important;
+        background: #f6f8fa !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child .stButton > button,
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child .stDownloadButton > button {
+        border-style: dashed !important;
+        border-color: #8250df88 !important;
+        background: #fbefff !important;
+        color: #6639ba !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child .stButton > button:hover,
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child .stDownloadButton > button:hover {
+        border-color: #8250df !important;
+        background: #f3d9ff !important;
     }
     /* View tabs row — Gmail-style (icon + label, blue active underline) */
     .portfolio-view-tabs-anchor {
@@ -592,15 +737,15 @@ APP_CSS = """
         padding: 0 !important;
         white-space: nowrap;
     }
-    /* Tab icons (Material Symbols) — order: Standard, Trends, ROI, Valuation */
+    /* Tab icons (Material Symbols) — order: Standard, ROI, Trends, Valuation */
     div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(1)::before {
         content: "table_rows";
     }
     div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(2)::before {
-        content: "trending_up";
+        content: "payments";
     }
     div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(3)::before {
-        content: "payments";
+        content: "trending_up";
     }
     div:has(.portfolio-view-tabs-anchor) [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:nth-of-type(4)::before {
         content: "monitoring";
@@ -874,7 +1019,7 @@ APP_CSS = """
     .kpi-strip .kpi-item:first-child {
         justify-content: flex-start;
     }
-    .kpi-strip .kpi-item:last-child {
+    .kpi-strip-toolbar .kpi-item:last-child {
         justify-content: flex-end;
     }
     .kpi-strip .kpi-lbl,

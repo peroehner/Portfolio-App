@@ -1,27 +1,26 @@
 """User identity (email) — account selector in the portfolio panel."""
-import re
-
 import streamlit as st
 
+from portfolio_app.domain.user_identity import DEFAULT_LOCAL_EMAIL
 from portfolio_app.services.session_context import (
     get_session_email,
     get_session_user,
     list_session_users,
     switch_session_user,
 )
+from portfolio_app.services.user_identity_service import get_user_identity_service
 
 _MANUAL_ACCOUNT_OPTION = "Use another email…"
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
 
 
 def _switch_session_user(email: str):
-    normalized = email.strip().lower()
-    if not normalized:
+    identity = get_user_identity_service()
+    ok, err = identity.validate_email(email)
+    if not ok:
+        st.warning(err)
         return
+    normalized = identity.normalize_email(email)
     if normalized == get_session_email():
-        return
-    if not _EMAIL_RE.match(normalized):
-        st.warning("Enter a valid email (e.g. name@example.com).")
         return
     if switch_session_user(normalized):
         st.session_state["header_user_select"] = normalized
@@ -47,6 +46,14 @@ def _on_account_select() -> None:
         st.session_state.pop("_account_picked_manual", None)
 
 
+def _render_identity_status_hint() -> None:
+    """Future verification UX — hidden while all local users are active."""
+    user = get_session_user()
+    identity = get_user_identity_service()
+    if identity.is_verification_required(user):
+        st.caption("Email verification pending — portfolios remain available for now.")
+
+
 def render_account_in_header():
     """Compact user switcher; manual email entry only for 'Use another email…'."""
     current_email = get_session_email()
@@ -64,10 +71,15 @@ def render_account_in_header():
         "Account",
         options=options,
         key="header_user_select",
-        help="Switch active user to isolate portfolio sets.",
+        help=(
+            "Switch active user to isolate portfolio sets. "
+            f"Each email maps to one account (default: {DEFAULT_LOCAL_EMAIL})."
+        ),
         label_visibility="collapsed",
         on_change=_on_account_select,
     )
+
+    _render_identity_status_hint()
 
     if selected == _MANUAL_ACCOUNT_OPTION:
         with st.form("manual_user_switch_form", clear_on_submit=False):

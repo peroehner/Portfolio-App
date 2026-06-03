@@ -5,6 +5,9 @@ from pathlib import Path
 
 from portfolio_app.config import DB_PATH
 
+# Bump when adding migrations in _run_schema_migrations.
+SCHEMA_USER_VERSION = 1
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +47,43 @@ CREATE INDEX IF NOT EXISTS idx_positions_portfolio
 
 CREATE INDEX IF NOT EXISTS idx_portfolios_user_updated
     ON portfolios (user_id, updated_at DESC);
+"""
+
+_SCHEMA_V1_SYNC = """
+CREATE TABLE IF NOT EXISTS portfolio_sync_state (
+    portfolio_id INTEGER PRIMARY KEY,
+    last_sync_at TEXT,
+    last_sync_status TEXT NOT NULL DEFAULT 'never',
+    last_sync_error TEXT,
+    symbols_requested INTEGER,
+    symbols_succeeded INTEGER,
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS symbol_financial_snapshot (
+    portfolio_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    synced_at TEXT NOT NULL,
+    price REAL,
+    change_pct REAL,
+    div_yield REAL,
+    est_target REAL,
+    trailing_pe REAL,
+    forward_pe REAL,
+    peg REAL,
+    rev_growth_pct REAL,
+    op_margin_pct REAL,
+    returns_5d REAL,
+    returns_1m REAL,
+    returns_6m REAL,
+    returns_12m REAL,
+    payload_json TEXT,
+    PRIMARY KEY (portfolio_id, symbol),
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_portfolio
+    ON symbol_financial_snapshot (portfolio_id, symbol);
 """
 
 
@@ -100,3 +140,14 @@ def _run_schema_migrations(conn: sqlite3.Connection):
         """
     )
     conn.execute("UPDATE users SET status = COALESCE(NULLIF(status, ''), 'active')")
+
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 1:
+        conn.executescript(_SCHEMA_V1_SYNC)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO portfolio_sync_state (portfolio_id, last_sync_status)
+            SELECT id, 'never' FROM portfolios
+            """
+        )
+        conn.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")

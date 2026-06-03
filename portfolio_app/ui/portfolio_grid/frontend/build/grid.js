@@ -26,7 +26,11 @@
   var suppressEmit = false;
   var lastRowsJson = "";
   var lastColumnsJson = "";
+  var lastPinnedJson = "";
+  var pinnedBottomRowData = [];
   var resizeObserver = null;
+  var sortClickCounter = 0;
+  var lastHeaderSortAt = 0;
 
   function fitColumnsToGrid(api) {
     if (!api || !api.sizeColumnsToFit) return;
@@ -47,7 +51,24 @@
     resizeObserver.observe(root);
   }
 
+  var FOOTER_BG = "#f0f2f6";
+  var FOOTER_TEXT = "#31333F";
+
+  function isFooterRow(data) {
+    return !!(data && data.__isFooter);
+  }
+
+  function footerCellStyle(params) {
+    if (isFooterRow(params.data)) {
+      return { backgroundColor: FOOTER_BG, color: FOOTER_TEXT };
+    }
+    return null;
+  }
+
   function gradientCellStyle(params) {
+    if (isFooterRow(params.data)) {
+      return { backgroundColor: FOOTER_BG, color: FOOTER_TEXT };
+    }
     var styles = params.data && params.data.__styles;
     var field = params.colDef.field;
     if (styles && styles[field]) {
@@ -57,7 +78,7 @@
   }
 
   function formatCellValue(value, format) {
-    if (value == null || value === "") {
+    if (value == null || value === "" || (typeof value === "number" && isNaN(value))) {
       return "-";
     }
     if (format === "date" || format === "text") {
@@ -105,12 +126,33 @@
       var next = Object.assign({}, col);
       if (next.gradient) {
         next.cellStyle = gradientCellStyle;
+      } else {
+        var prevStyle = next.cellStyle;
+        next.cellStyle = function (params) {
+          var footer = footerCellStyle(params);
+          if (footer) return footer;
+          if (typeof prevStyle === "function") return prevStyle(params);
+          return prevStyle || null;
+        };
       }
       if (next.cellFormat) {
         var fmt = next.cellFormat;
         delete next.cellFormat;
         next.valueFormatter = function (params) {
           return formatCellValue(params.value, fmt);
+        };
+      } else if (next.field !== "Symbol") {
+        next.valueFormatter = function (params) {
+          if (isFooterRow(params.data)) {
+            var v = params.value;
+            if (v == null || v === "" || (typeof v === "number" && isNaN(v))) {
+              return "-";
+            }
+          }
+          if (params.value == null || params.value === "") {
+            return "-";
+          }
+          return params.value;
         };
         if (fmt !== "date" && fmt !== "text") {
           next.type = "numericColumn";
@@ -142,10 +184,23 @@
       });
   }
 
+  function isPinnedBottomNode(node) {
+    return !!(node && (node.rowPinned === "bottom" || (node.data && node.data.__isFooter)));
+  }
+
   function dataRowIndex(node) {
     if (!node || !node.data) return null;
+    if (node.data.__isFooter) return null;
+    if (node.rowPinned === "bottom") return null;
     if (node.data.__rowIndex != null) return parseInt(node.data.__rowIndex, 10);
     return node.rowIndex;
+  }
+
+  function pinnedRowsFromArgs(args) {
+    var pinned = args && args.pinned_bottom_row;
+    if (!pinned) return [];
+    if (Array.isArray(pinned)) return pinned;
+    return [pinned];
   }
 
   function updateSelectedRowsFromPython(selected) {
@@ -169,6 +224,7 @@
     if (!api) return;
     api.deselectAll();
     api.forEachNode(function (node) {
+      if (isPinnedBottomNode(node)) return;
       var idx = dataRowIndex(node);
       if (idx == null) return;
       if (selectedRows.has(idx)) {
@@ -177,12 +233,38 @@
     });
   }
 
-  function emitSelection() {
+  function emitComponentState(sortClick) {
     if (suppressEmit) return;
     var rows = Array.from(selectedRows).sort(function (a, b) {
       return a - b;
     });
-    setComponentValue({ rows: rows, symbols: rowsToSymbols(rows) });
+    var payload = { rows: rows, symbols: rowsToSymbols(rows) };
+    if (sortClick) {
+      payload.sort_click = sortClick;
+    }
+    setComponentValue(payload);
+  }
+
+  function emitSelection() {
+    emitComponentState(null);
+  }
+
+  function emitSortClick(columnField) {
+    var now = Date.now();
+    if (now - lastHeaderSortAt < 80) return;
+    lastHeaderSortAt = now;
+    sortClickCounter += 1;
+    var rows = Array.from(selectedRows).sort(function (a, b) {
+      return a - b;
+    });
+    setComponentValue({
+      rows: rows,
+      symbols: rowsToSymbols(rows),
+      sort_click: {
+        column: columnField,
+        id: sortClickCounter,
+      },
+    });
   }
 
   function computeNextSelection(idx, event) {
@@ -215,6 +297,7 @@
 
   function onRowClicked(params) {
     if (!params || !params.node) return;
+    if (isPinnedBottomNode(params.node)) return;
     var idx = dataRowIndex(params.node);
     if (idx == null) return;
     selectedRows = computeNextSelection(idx, params.event);
@@ -233,20 +316,66 @@
     gridApi = null;
     lastRowsJson = "";
     lastColumnsJson = "";
+    lastPinnedJson = "";
+    pinnedBottomRowData = [];
+  }
+
+  function headerFieldFromClick(event) {
+    if (!event || !event.target) return null;
+    var cell = event.target.closest(".ag-header-cell");
+    if (!cell) return null;
+    var colId = cell.getAttribute("col-id");
+    if (!colId || colId.indexOf("__") === 0) return null;
+    return colId;
+  }
+
+  function onColumnHeaderClicked(params) {
+    if (!params || !params.column) return;
+    var field = params.column.getColDef().field;
+    if (!field || field.indexOf("__") === 0) return;
+    emitSortClick(field);
+  }
+
+  function bindHeaderClickFallback(root) {
+    if (!root || root._peroHeaderSortBound) return;
+    root._peroHeaderSortBound = true;
+    root.addEventListener("click", function (event) {
+      var field = headerFieldFromClick(event);
+      if (!field) return;
+      emitSortClick(field);
+    });
+  }
+
+  function pinnedBottomRowStyle(params) {
+    if (params.node && params.node.rowPinned === "bottom") {
+      return { fontWeight: "600", backgroundColor: FOOTER_BG, color: FOOTER_TEXT };
+    }
+    return null;
   }
 
   function createGrid(root, columnDefs) {
     var options = {
       columnDefs: enrichColumnDefs(columnDefs),
       rowData: rowData,
+      pinnedBottomRowData: pinnedBottomRowData.slice(),
+      getRowStyle: pinnedBottomRowStyle,
       defaultColDef: {
-        sortable: true,
+        sortable: false,
         resizable: true,
         filter: false,
         flex: 1,
         minWidth: 44,
         wrapHeaderText: true,
         autoHeaderHeight: true,
+        cellStyle: footerCellStyle,
+        valueFormatter: function (params) {
+          if (!isFooterRow(params.data)) return params.value;
+          var v = params.value;
+          if (v == null || v === "" || (typeof v === "number" && isNaN(v))) {
+            return "-";
+          }
+          return params.value;
+        },
       },
       autoSizeStrategy: {
         type: "fitGridWidth",
@@ -260,14 +389,17 @@
       rowHeight: 30,
       domLayout: "normal",
       getRowId: function (params) {
+        if (params.data && params.data.__isFooter) return "__footer_sum__";
         return String(
           params.data.__rowIndex != null ? params.data.__rowIndex : params.node.rowIndex
         );
       },
       onRowClicked: onRowClicked,
+      onColumnHeaderClicked: onColumnHeaderClicked,
       onGridReady: function (params) {
         fitColumnsToGrid(params.api);
         applySelection(params.api);
+        bindHeaderClickFallback(root);
       },
       onFirstDataRendered: function (params) {
         fitColumnsToGrid(params.api);
@@ -283,6 +415,7 @@
     if (!root) return;
 
     rowData = Array.isArray(args.rows) ? args.rows : [];
+    pinnedBottomRowData = pinnedRowsFromArgs(args);
     var height = parseInt(args.height, 10) || 320;
     setFrameHeight(height);
 
@@ -293,15 +426,37 @@
 
     var rowsJson = JSON.stringify(rowData);
     var columnsJson = JSON.stringify(columnDefs);
+    var pinnedJson = JSON.stringify(pinnedBottomRowData);
 
     if (gridApi && columnsJson === lastColumnsJson) {
       if (rowsJson !== lastRowsJson) {
         gridApi.setGridOption("rowData", rowData);
-        gridApi.setGridOption("columnDefs", columnDefs);
         lastRowsJson = rowsJson;
+      }
+      if (pinnedJson !== lastPinnedJson) {
+        gridApi.setGridOption("pinnedBottomRowData", pinnedBottomRowData.slice());
+        lastPinnedJson = pinnedJson;
       }
       applySelection(gridApi);
       fitColumnsToGrid(gridApi);
+      window.requestAnimationFrame(function () {
+        fitColumnsToGrid(gridApi);
+      });
+      return;
+    }
+
+    if (gridApi && columnsJson !== lastColumnsJson) {
+      gridApi.setGridOption("columnDefs", columnDefs);
+      if (rowsJson !== lastRowsJson) {
+        gridApi.setGridOption("rowData", rowData);
+        lastRowsJson = rowsJson;
+      }
+      gridApi.setGridOption("pinnedBottomRowData", pinnedBottomRowData.slice());
+      lastColumnsJson = columnsJson;
+      lastPinnedJson = pinnedJson;
+      applySelection(gridApi);
+      fitColumnsToGrid(gridApi);
+      bindHeaderClickFallback(root);
       return;
     }
 
@@ -309,6 +464,7 @@
     root.innerHTML = "";
     lastRowsJson = rowsJson;
     lastColumnsJson = columnsJson;
+    lastPinnedJson = pinnedJson;
     createGrid(root, columnDefs);
   }
 

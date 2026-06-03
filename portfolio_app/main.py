@@ -8,7 +8,7 @@ from portfolio_app.services.session_context import (
 )
 from portfolio_app.ui.detail_panel import render_detail_panel
 from portfolio_app.ui.header import render_header
-from portfolio_app.ui.holdings import get_editable_holdings_df
+from portfolio_app.ui.holdings import get_holdings_for_analysis_df
 from portfolio_app.ui.portfolio_page import render_portfolio_page
 from portfolio_app.ui.sections import render_section_header
 from portfolio_app.ui.theme import inject_app_styles, inject_desktop_icons
@@ -38,7 +38,7 @@ def run():
         ensure_uploader_key()
         _, refresh_clicked = render_toolbar_row()
         active = load_active_portfolio()
-        render_portfolio_page(get_editable_holdings_df(), active.name, refresh_clicked)
+        render_portfolio_page(get_holdings_for_analysis_df(), active.name, refresh_clicked)
 
     with st.container(border=True):
         render_section_header(

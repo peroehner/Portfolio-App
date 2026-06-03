@@ -46,3 +46,40 @@ class ActivePortfolio:
     user_id: int
     name: str
     holdings_df: pd.DataFrame
+
+
+SYNC_STATUS_NEVER = "never"
+SYNC_STATUS_SUCCESS = "success"
+SYNC_STATUS_PARTIAL = "partial"
+SYNC_STATUS_FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class PortfolioSyncState:
+    portfolio_id: int
+    last_sync_at: Optional[datetime] = None
+    last_sync_status: str = SYNC_STATUS_NEVER
+    last_sync_error: Optional[str] = None
+    symbols_requested: Optional[int] = None
+    symbols_succeeded: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SymbolFinancialSnapshot:
+    portfolio_id: int
+    symbol: str
+    synced_at: datetime
+    price: Optional[float] = None
+    change_pct: Optional[float] = None
+    div_yield: Optional[float] = None
+    est_target: Optional[float] = None
+    trailing_pe: Optional[float] = None
+    forward_pe: Optional[float] = None
+    peg: Optional[float] = None
+    rev_growth_pct: Optional[float] = None
+    op_margin_pct: Optional[float] = None
+    returns_5d: Optional[float] = None
+    returns_1m: Optional[float] = None
+    returns_6m: Optional[float] = None
+    returns_12m: Optional[float] = None
+    payload_json: Optional[str] = None

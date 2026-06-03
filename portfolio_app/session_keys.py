@@ -59,8 +59,42 @@ def clear_session_keys(keys):
             del st.session_state[key]
 
 
+PRESERVE_TABLE_SELECTION_KEY = "_preserve_table_selection"
+
+
+def portfolio_grid_widget_key() -> str:
+    """Streamlit widget key — bump layout gen to remount grid after toolbar layout changes."""
+    import streamlit as st
+
+    gen = st.session_state.get("portfolio_grid_layout_gen", 0)
+    return f"portfolio_grid_{gen}"
+
+
+def bump_portfolio_grid_layout() -> None:
+    """Force AG Grid remount when page layout above the table changes (e.g. ⋮ actions row)."""
+    import streamlit as st
+
+    st.session_state.portfolio_grid_layout_gen = (
+        int(st.session_state.get("portfolio_grid_layout_gen", 0)) + 1
+    )
+
+
+def preserve_portfolio_table_selection() -> None:
+    import streamlit as st
+
+    st.session_state[PRESERVE_TABLE_SELECTION_KEY] = True
+
+
+def notify_portfolio_toolbar_layout_changed() -> None:
+    """Remount AG Grid after the expandable Portfolio/File actions row toggles."""
+    bump_portfolio_grid_layout()
+    clear_portfolio_table_widget()
+    preserve_portfolio_table_selection()
+
+
 def clear_portfolio_table_widget():
     import streamlit as st
 
+    st.session_state.pop(portfolio_grid_widget_key(), None)
     if "portfolio_grid" in st.session_state:
         del st.session_state["portfolio_grid"]

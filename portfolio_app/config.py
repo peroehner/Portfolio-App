@@ -39,15 +39,16 @@ VALUATION_LATE_COLS = {
 
 TABLE_VIEW_COLUMNS = {
     "Standard": [
-        "Symbol", "🌐 Price", "Change %", "Div Yield", "Est Target", "Upside %",
+        "Symbol", "🌐 Price", "Change %", "Cost/Share",
+        "Div Yield", "Est Target", "Upside %", "PurchaseDate",
+    ],
+    "ROI": [
+        "Symbol", "🌐 Price", "Cost/Share", "📈 Target", "Est Target", "Div Income",
+        "Shares", "Value", "Ø CAGR", "Invest", "📈 Target Val", "∆ Act-Target %",
+        "Est Target Val", "∆ Act-Est Target %",
     ],
     "Trends": [
         "Symbol", "🌐 Price", "Change %", "5D", "1M", "6M", "12M",
-    ],
-    "ROI": [
-        "Symbol", "🌐 Price", "Shares", "PurchaseDate", "Cost/Share",
-        "📈 Total %", "Total $", "Div Income", "Ø CAGR", "📈 Target",
-        "∆ Act-Target %", "Est Target", "∆ Act-Est Target %",
     ],
     "Valuation Growth": [
         "Symbol", "🌐 Price", "Change %",
@@ -58,6 +59,15 @@ TABLE_VIEW_COLUMNS = {
     ],
 }
 
+# ROI pinned footer — column totals (headers: Div $, Invest, Value, Tgt Val, Est Val)
+ROI_SUM_COLUMNS = (
+    "Div Income",
+    "Invest",
+    "Value",
+    "📈 Target Val",
+    "Est Target Val",
+)
+
 TABLE_PERCENT_COLS = [
     "📈 Total %", "Change %", "Upside %", "Ø CAGR", "Target %", "∆ Act-Target %",
     "∆ Act-Est Target %",
@@ -66,6 +76,7 @@ TABLE_PERCENT_COLS = [
 ]
 TABLE_CURRENCY_COLS = [
     "📈 Target", "Target $", "Total $", "Est Target", "Cost/Share", "🌐 Price", "Div Income",
+    "Value", "Invest", "📈 Target Val", "Est Target Val",
 ]
 TABLE_PNL_COLS = ["Total $"]
 TABLE_GRADIENT_EXCLUDE = {"Div Yield"}
@@ -88,6 +99,10 @@ TABLE_NUMBER_COLUMN_FORMAT = {
     "∆ Act-Est Target %": "%.2f%%",
     "Div Yield": "%.1f%%",
     "Div Income": "$%.2f",
+    "Value": "$%.2f",
+    "Invest": "$%.2f",
+    "📈 Target Val": "$%.2f",
+    "Est Target Val": "$%.2f",
     "5D": "%.2f%%",
     "1M": "%.2f%%",
     "6M": "%.2f%%",

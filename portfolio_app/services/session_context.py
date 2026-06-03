@@ -2,15 +2,14 @@
 import streamlit as st
 
 from portfolio_app.domain.models import ActivePortfolio, User
+from portfolio_app.domain.user_identity import DEFAULT_LOCAL_EMAIL, normalize_email
 from portfolio_app.services.portfolio_service import PortfolioService
+from portfolio_app.services.user_identity_service import get_user_identity_service
 from portfolio_app.session_keys import (
     PORTFOLIO_RESET_KEYS,
     clear_portfolio_table_widget,
     clear_session_keys,
 )
-
-_DEFAULT_EMAIL = "user@local"
-
 
 def get_portfolio_service() -> PortfolioService:
     if "portfolio_service" not in st.session_state:
@@ -19,18 +18,19 @@ def get_portfolio_service() -> PortfolioService:
 
 
 def get_session_email() -> str:
-    return st.session_state.get("user_email", _DEFAULT_EMAIL).strip().lower()
+    return normalize_email(st.session_state.get("user_email", DEFAULT_LOCAL_EMAIL))
 
 
 def set_session_email(email: str):
-    st.session_state.user_email = email.strip().lower()
+    st.session_state.user_email = normalize_email(email)
 
 
 def get_session_user() -> User:
-    return get_portfolio_service().get_or_create_user(get_session_email())
+    return get_user_identity_service().resolve_user(get_session_email(), create=True)
+
 
 def list_session_users() -> list[User]:
-    return get_portfolio_service().list_users()
+    return get_user_identity_service().list_known_users()
 
 
 def switch_session_user(email: str) -> bool:
@@ -39,12 +39,17 @@ def switch_session_user(email: str) -> bool:
 
     Returns True only when a switch was performed.
     """
-    normalized = email.strip().lower()
-    if not normalized or normalized == get_session_email():
+    identity = get_user_identity_service()
+    ok, err = identity.validate_email(email)
+    if not ok:
+        return False
+    normalized = identity.normalize_email(email)
+    if normalized == get_session_email():
         return False
 
     # Set identity first so downstream loads resolve the target user's data.
     set_session_email(normalized)
+    identity.resolve_user(normalized, create=True)
 
     # Clear user-bound active selection and table/widget state.
     st.session_state.pop("active_portfolio_id", None)
@@ -55,7 +60,7 @@ def switch_session_user(email: str) -> bool:
     st.session_state.pop("show_upload_dialog", None)
     clear_session_keys(PORTFOLIO_RESET_KEYS)
     clear_portfolio_table_widget()
-    invalidate_analysis(refetch_metadata=True)
+    invalidate_analysis(refetch_metadata=False)
     return True
 
 
@@ -138,7 +143,7 @@ def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True
     if previous_id and previous_id != active.portfolio_id:
         st.session_state.pop(f"holdings_draft_{previous_id}", None)
     st.session_state.pop(f"holdings_draft_{active.portfolio_id}", None)
-    st.session_state.pop("portfolio_grid", None)
+    clear_portfolio_table_widget()
     st.session_state.pop("portfolio_table_roi_editor", None)
     st.session_state.pop("selected_symbol", None)
     st.session_state.pop("selected_symbols", None)

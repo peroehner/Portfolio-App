@@ -15,16 +15,19 @@ Optional CLI portfolio file:
 streamlit run app.py -- -f myPortfolio.csv
 ```
 
-## Persistence (Phase 1)
+## Persistence
 
 Holdings are stored in **SQLite** at `data/pero.db` (gitignored). Each user can have **multiple named portfolios**.
+
+**Storage v2:** `portfolio_sync_state` and `symbol_financial_snapshot` (schema v1). CSV import targets the **current portfolio** with **Replace** or **Merge** and a preview before apply. Tests: `python3 -m unittest discover -s tests -v`. See `PORTFOLIO_V2_STORAGE_SPEC.md`.
 
 - **Header → Account** — email identifies your local user (no password yet).
 - **Startup** — opens your **last used** portfolio; if you have none, a one-time **Demo Portfolio** (mock data) is created.
 - **Portfolio bar** — switch portfolios, **rename**, **New** (empty), or **↺** reload from database.
-- **📁 CSV import** — choose a **portfolio name** (defaults to the file name). If that name already exists, you must confirm **replace** (holdings are overwritten).
+- **📁 CSV import** — **Replace** or **Merge** into the **current** portfolio (preview shows add/update/remove/unchanged).
 - **Build manually** — **New** → **ROI** view → **Add symbol** → edit cells → **Save portfolio**.
-- **ROI view** — AG Grid for selection; open **⋮** → **Edit portfolio** to add symbols or change shares, cost, and targets.
+- **Edit portfolio** (below any table view) — six holdings columns only; multiple lots per symbol merge on **Save portfolio**.
+- **ROI / other views** — AG Grid for selection and analysis columns (read-only).
 
 ## Project layout
 

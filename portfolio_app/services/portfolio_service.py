@@ -3,6 +3,14 @@ import pandas as pd
 
 from portfolio_app.data.portfolio_loader import get_mock_portfolio_df
 from portfolio_app.domain.models import ActivePortfolio, Portfolio, User
+from portfolio_app.services.import_engine import (
+    ImportApplyResult,
+    ImportMode,
+    ImportPreview,
+    apply_import,
+    build_import_preview,
+    parse_csv_preflight,
+)
 from portfolio_app.storage.repository import PortfolioRepository
 
 _EMPTY_HOLDINGS_COLUMNS = [
@@ -106,31 +114,80 @@ class PortfolioService:
             raise ValueError("Portfolio not found.")
         return self._active_from_portfolio(portfolio)
 
-    def import_csv_to_portfolio(
+    def save_as_portfolio(
         self,
         user_id: int,
-        name: str,
-        df: pd.DataFrame,
-        *,
-        replace_existing: bool,
+        source_portfolio_id: int,
+        new_name: str,
+        holdings_df: pd.DataFrame,
     ) -> ActivePortfolio:
         """
-        Import CSV holdings into a named portfolio.
-        If the name exists, replace_existing must be True or ValueError is raised.
+        Clone holdings (§6 consolidated on write) and financial snapshots into a new portfolio.
         """
-        name = name.strip()
-        if not name:
-            raise ValueError("Portfolio name is required.")
-
-        existing = self.repo.find_portfolio_by_name(user_id, name)
-        if existing:
-            if not replace_existing:
-                raise ValueError(f'A portfolio named "{name}" already exists.')
-            self.repo.replace_positions(existing.id, df)
-            self.remember_last_portfolio(user_id, existing.id)
-            return self._active_from_portfolio(existing)
-
-        portfolio = self.repo.create_portfolio(user_id, name)
-        self.repo.replace_positions(portfolio.id, df)
+        source = self.repo.get_user_portfolio(user_id, source_portfolio_id)
+        if not source:
+            raise ValueError("Source portfolio not found.")
+        portfolio = self.repo.create_portfolio(user_id, new_name)
+        self.repo.replace_positions(
+            portfolio.id,
+            holdings_df,
+            allow_empty=holdings_df.empty,
+        )
+        self.repo.copy_symbol_snapshots(source_portfolio_id, portfolio.id)
+        keep_symbols = holdings_df["Symbol"].astype(str).str.strip().str.upper().tolist()
+        self.repo.prune_symbol_snapshots(portfolio.id, keep_symbols)
+        source_sync = self.repo.get_sync_state(source_portfolio_id)
+        self.repo.update_sync_state(
+            portfolio.id,
+            last_sync_at=source_sync.last_sync_at,
+            last_sync_status=source_sync.last_sync_status,
+            last_sync_error=source_sync.last_sync_error,
+            symbols_requested=source_sync.symbols_requested,
+            symbols_succeeded=source_sync.symbols_succeeded,
+        )
         self.remember_last_portfolio(user_id, portfolio.id)
         return self._active_from_portfolio(portfolio)
+
+    def _holdings_df_for_portfolio(self, portfolio_id: int) -> pd.DataFrame:
+        positions = self.repo.list_positions(portfolio_id)
+        if not positions:
+            return self._empty_holdings_df()
+        return self.repo.positions_to_dataframe(positions)
+
+    def preview_csv_import(
+        self,
+        portfolio_id: int,
+        raw_csv: pd.DataFrame,
+        mode: ImportMode,
+    ) -> ImportPreview:
+        current = self._holdings_df_for_portfolio(portfolio_id)
+        csv_df, rejected = parse_csv_preflight(raw_csv)
+        return build_import_preview(current, csv_df, mode, rejected)
+
+    def import_csv_into_portfolio(
+        self,
+        portfolio_id: int,
+        raw_csv: pd.DataFrame,
+        mode: ImportMode,
+        *,
+        allow_empty_replace: bool = False,
+    ) -> tuple[ActivePortfolio, ImportApplyResult]:
+        """Apply replace or merge import into an existing portfolio (Phase 2)."""
+        current = self._holdings_df_for_portfolio(portfolio_id)
+        csv_df, rejected = parse_csv_preflight(raw_csv)
+        applied = apply_import(
+            current,
+            csv_df,
+            mode,
+            rejected,
+            allow_empty_replace=allow_empty_replace,
+        )
+        self.repo.replace_positions(
+            portfolio_id,
+            applied.holdings_df,
+            allow_empty=applied.holdings_df.empty,
+        )
+        portfolio = self.repo.get_portfolio(portfolio_id)
+        if not portfolio:
+            raise ValueError("Portfolio not found.")
+        return self._active_from_portfolio(portfolio), applied

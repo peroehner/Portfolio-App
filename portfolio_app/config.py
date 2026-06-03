@@ -2,7 +2,8 @@
 import os
 
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(APP_DIR, "data", "pero.db")
+# Override with PERO_DB_PATH to use a dedicated DB per host (deploy vs local).
+DB_PATH = os.environ.get("PERO_DB_PATH") or os.path.join(APP_DIR, "data", "pero.db")
 
 LOGO_PATH = os.path.join(APP_DIR, "static", "myPeroLogo.png")
 if not os.path.exists(LOGO_PATH):

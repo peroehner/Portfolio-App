@@ -100,20 +100,23 @@ class PortfolioSyncTestCase(unittest.TestCase):
     @patch("portfolio_app.services.portfolio_sync._apply_session_results")
     @patch("portfolio_app.services.portfolio_sync.fetch_portfolio_valuation_parallel")
     @patch("portfolio_app.services.portfolio_sync.fetch_portfolio_metadata_parallel")
-    @patch("portfolio_app.services.portfolio_sync.fetch_bulk_close")
+    @patch("portfolio_app.services.portfolio_sync.download_close_prices")
     @patch("portfolio_app.services.portfolio_sync.get_exchange_rate")
     def test_refresh_persists_snapshots(
         self,
         mock_fx,
-        mock_bulk,
+        mock_prices,
         mock_meta,
         mock_val,
         mock_apply,
     ):
         mock_fx.return_value = None
-        mock_bulk.return_value = pd.DataFrame(
-            {"AAPL": [175.0, 180.0]},
-            index=pd.date_range("2026-05-01", periods=2),
+        mock_prices.return_value = (
+            pd.DataFrame(
+                {"AAPL": [175.0, 180.0]},
+                index=pd.date_range("2026-05-01", periods=2),
+            ),
+            None,
         )
         mock_meta.return_value = {"AAPL": (200.0, 1.5, 0.6)}
         mock_val.return_value = {

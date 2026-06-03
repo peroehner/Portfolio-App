@@ -34,6 +34,10 @@ def _clear_analysis_session():
 
 def load_portfolio_into_session(df_port, *, from_network: bool = False):
     """Build session results from DB snapshots (default) or Yahoo refresh."""
+    from portfolio_app.config import DB_PATH
+    from portfolio_app.domain.models import SYNC_STATUS_FAILED, SYNC_STATUS_PARTIAL
+    from portfolio_app.services.portfolio_sync import format_last_sync_label
+
     active = load_active_portfolio()
     if df_port is None or df_port.empty:
         _clear_analysis_session()
@@ -48,10 +52,22 @@ def load_portfolio_into_session(df_port, *, from_network: bool = False):
     else:
         sync_state = load_analysis_from_snapshots(df_port, active.portfolio_id)
 
-    from portfolio_app.services.portfolio_sync import format_last_sync_label
-
     st.session_state.portfolio_last_sync_label = format_last_sync_label(sync_state)
     st.session_state.portfolio_holdings_signature = _holdings_analysis_signature(df_port)
+
+    if from_network:
+        if sync_state.last_sync_status == SYNC_STATUS_FAILED:
+            st.error(
+                "Market data sync failed on this server. "
+                f"{sync_state.last_sync_error or 'No prices returned.'} "
+                f"Database: `{DB_PATH}`"
+            )
+        elif sync_state.last_sync_status == SYNC_STATUS_PARTIAL:
+            st.warning(
+                f"Partial sync ({sync_state.symbols_succeeded or 0}/"
+                f"{sync_state.symbols_requested or 0} symbols). "
+                f"{sync_state.last_sync_error or ''}".strip()
+            )
 
 
 def handle_refresh(refresh_clicked):

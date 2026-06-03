@@ -26,7 +26,7 @@ from portfolio_app.analysis.valuation_scores import (
 )
 from portfolio_app.config import TABLE_HISTORY_PERIOD
 from portfolio_app.data.market_data import (
-    fetch_bulk_close,
+    download_close_prices,
     fetch_portfolio_metadata_parallel,
     get_exchange_rate,
 )
@@ -54,7 +54,17 @@ def format_last_sync_label(sync_state: PortfolioSyncState) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     local = dt.astimezone()
-    return local.strftime("%d %b %Y, %H:%M")
+    stamp = local.strftime("%d %b %Y, %H:%M")
+    req = sync_state.symbols_requested
+    ok = sync_state.symbols_succeeded
+    if sync_state.last_sync_status == SYNC_STATUS_FAILED:
+        detail = sync_state.last_sync_error or "no symbols received prices"
+        return f"Sync failed · {stamp} — {detail}"
+    if sync_state.last_sync_status == SYNC_STATUS_PARTIAL and req and ok is not None:
+        return f"Partial sync · {stamp} ({ok}/{req} symbols)"
+    if sync_state.last_sync_error:
+        return f"{stamp} — {sync_state.last_sync_error}"
+    return stamp
 
 
 def snapshots_by_symbol(
@@ -380,7 +390,9 @@ def run_network_refresh(
 
         st.session_state.last_eur_rate = eur_rate
 
-    bulk_close = fetch_bulk_close(unique_symbols, TABLE_HISTORY_PERIOD)
+    bulk_close, price_fetch_note = download_close_prices(
+        list(unique_symbols), TABLE_HISTORY_PERIOD
+    )
     from portfolio_app.analysis.portfolio_build import build_hist_by_symbol
 
     hist_by_symbol = build_hist_by_symbol(bulk_close, unique_symbols)
@@ -422,11 +434,19 @@ def run_network_refresh(
     else:
         status = SYNC_STATUS_SUCCESS
 
+    sync_error = price_fetch_note
+    if succeeded == 0 and not sync_error:
+        sync_error = (
+            f"Yahoo returned no prices for {requested} symbol(s) on this host."
+        )
+    elif succeeded < requested and not sync_error:
+        sync_error = f"Prices for {succeeded}/{requested} symbols only."
+
     sync_state = repo.update_sync_state(
         portfolio_id,
         last_sync_at=synced_at,
         last_sync_status=status,
-        last_sync_error=None,
+        last_sync_error=sync_error,
         symbols_requested=requested,
         symbols_succeeded=succeeded,
     )

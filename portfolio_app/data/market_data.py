@@ -29,22 +29,94 @@ def get_exchange_rate():
         return 0.92
 
 
+def _close_frame_from_bulk(bulk_data, symbols: list[str]) -> pd.DataFrame:
+    if bulk_data is None or bulk_data.empty:
+        return pd.DataFrame()
+    if len(symbols) == 1:
+        close = bulk_data["Close"]
+        return pd.DataFrame({symbols[0]: close}).dropna()
+    if "Close" not in bulk_data.columns:
+        return pd.DataFrame()
+    return bulk_data["Close"].dropna(how="all")
+
+
+def _fetch_close_per_symbol(symbols: list[str], period: str) -> pd.DataFrame:
+    """Per-symbol history fallback when bulk yf.download fails (common on cloud hosts)."""
+    series = {}
+    for symbol in symbols:
+        try:
+            hist = yf.Ticker(symbol).history(period=period)
+            if hist is None or hist.empty or "Close" not in hist.columns:
+                continue
+            close = hist["Close"].dropna()
+            if not close.empty:
+                series[symbol] = close
+        except Exception:
+            continue
+        time.sleep(0.15)
+    if not series:
+        return pd.DataFrame()
+    return pd.DataFrame(series).dropna(how="all")
+
+
+def download_close_prices(
+    symbols: list[str], period: str = TABLE_HISTORY_PERIOD
+) -> tuple[pd.DataFrame, str | None]:
+    """
+    Fetch close history for symbols.
+
+    Returns (dataframe, error_or_warning). Tries bulk download first, then per-symbol.
+    """
+    symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
+    if not symbols:
+        return pd.DataFrame(), None
+
+    bulk_error = None
+    frame = pd.DataFrame()
+    try:
+        bulk_data = yf.download(
+            symbols, period=period, progress=False, group_by="column", threads=True
+        )
+        frame = _close_frame_from_bulk(bulk_data, symbols)
+    except Exception as exc:
+        bulk_error = str(exc)
+
+    missing = [s for s in symbols if frame.empty or s not in frame.columns]
+    if not missing:
+        return frame, None
+
+    fallback = _fetch_close_per_symbol(missing, period)
+    if not fallback.empty:
+        if frame.empty:
+            frame = fallback
+        else:
+            for col in fallback.columns:
+                frame[col] = fallback[col]
+        still_missing = [s for s in symbols if s not in frame.columns]
+        if still_missing and not bulk_error:
+            return frame, (
+                f"Partial Yahoo fetch: no prices for {', '.join(still_missing[:6])}"
+                + ("…" if len(still_missing) > 6 else "")
+            )
+        if still_missing:
+            return frame, (
+                f"Bulk download failed ({bulk_error}); per-symbol fallback missing "
+                f"{len(still_missing)} symbol(s)"
+            )
+        if bulk_error:
+            return frame, f"Bulk download failed ({bulk_error}); used per-symbol fallback"
+        return frame, "Used per-symbol fallback (bulk download returned incomplete data)"
+
+    if bulk_error:
+        return pd.DataFrame(), f"Yahoo price fetch failed: {bulk_error}"
+    return pd.DataFrame(), "Yahoo returned no price data (host may block yfinance bulk download)"
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_bulk_close(symbols_tuple, period=TABLE_HISTORY_PERIOD):
     """Bulk close prices for all symbols (cached)."""
-    symbols = list(symbols_tuple)
-    if not symbols:
-        return pd.DataFrame()
-    try:
-        bulk_data = yf.download(symbols, period=period, progress=False, group_by="column")
-        if bulk_data is None or bulk_data.empty:
-            return pd.DataFrame()
-        if len(symbols) == 1:
-            close = bulk_data["Close"]
-            return pd.DataFrame({symbols[0]: close}).dropna()
-        return bulk_data["Close"].dropna(how="all")
-    except Exception:
-        return pd.DataFrame()
+    frame, _note = download_close_prices(list(symbols_tuple), period)
+    return frame
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

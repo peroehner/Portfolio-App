@@ -18,6 +18,11 @@ def _analysis_symbols() -> list[str]:
     selected = [s for s in (st.session_state.get("selected_symbols") or []) if s]
     if selected:
         return selected
+    if st.session_state.get("table_sel_rows"):
+        focus = st.session_state.get("selected_symbol")
+        if focus:
+            return [focus]
+        return []
     focus = st.session_state.get("selected_symbol")
     ticker_liste = st.session_state.get("ticker_liste") or []
     if focus and focus in ticker_liste:
@@ -26,14 +31,20 @@ def _analysis_symbols() -> list[str]:
 
 
 def _sync_ta_chart_symbol(symbols: list[str]) -> str:
-    """Keep chart symbol in sync with table selection; preserve nav index when possible."""
+    """Keep chart symbol in sync with table focus; preserve chip index only within same focus."""
     if not symbols:
         return ""
     selection_key = tuple(symbols)
-    if st.session_state.get("_ta_selection_key") != selection_key:
+    focus = st.session_state.get("selected_symbol")
+    prev_key = st.session_state.get("_ta_selection_key")
+    prev_focus = st.session_state.get("_ta_sync_focus")
+    if prev_key != selection_key or prev_focus != focus:
         st.session_state["_ta_selection_key"] = selection_key
-        focus = st.session_state.get("selected_symbol")
-        st.session_state.ta_nav_index = symbols.index(focus) if focus in symbols else 0
+        st.session_state["_ta_sync_focus"] = focus
+        if focus and focus in symbols:
+            st.session_state.ta_nav_index = symbols.index(focus)
+        elif prev_key != selection_key:
+            st.session_state.ta_nav_index = 0
     idx = int(st.session_state.get("ta_nav_index", 0))
     idx = max(0, min(idx, len(symbols) - 1))
     st.session_state.ta_nav_index = idx
@@ -53,8 +64,11 @@ def _symbol_window(symbols: list[str], index: int, *, window: int = 7) -> tuple[
 def _ta_select_symbol(idx: int) -> None:
     symbols = st.session_state.get("_ta_nav_symbols") or []
     if 0 <= idx < len(symbols):
+        sym = symbols[idx]
         st.session_state.ta_nav_index = idx
-        st.session_state.ta_chart_symbol = symbols[idx]
+        st.session_state.ta_chart_symbol = sym
+        st.session_state.selected_symbol = sym
+        st.session_state["_ta_sync_focus"] = sym
     mark_preserve_table_selection()
 
 

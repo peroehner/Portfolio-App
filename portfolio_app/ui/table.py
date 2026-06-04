@@ -74,10 +74,27 @@ def rows_to_symbols(row_indices, summary_df):
     return symbols, last_row_idx
 
 
-def commit_selection_state(rows, summary_df):
+def commit_selection_from_symbols(symbols: list[str], display_df: pd.DataFrame) -> None:
+    """Persist symbols from the grid (display order) and remap row indices for AG Grid."""
+    symbols = [str(s).strip() for s in symbols if str(s).strip()]
+    rows = row_indices_for_symbols(display_df, symbols) if not display_df.empty else []
+    st.session_state.table_sel_rows = rows
+    st.session_state.selected_symbols = symbols
+    if not symbols:
+        return
+    focus = symbols[-1]
+    last_row_idx = rows[-1] if rows else None
+    if st.session_state.get("selected_symbol") != focus:
+        st.session_state.selected_symbol = focus
+        st.session_state.ticker_index = last_row_idx
+        prioritize_metadata_symbol(focus)
+        prioritize_valuation_symbol(focus)
+
+
+def commit_selection_state(rows, display_df):
     """Persist normalized row indices to export list and detail focus."""
     st.session_state.table_sel_rows = rows
-    symbols, last_row_idx = rows_to_symbols(rows, summary_df)
+    symbols, last_row_idx = rows_to_symbols(rows, display_df)
     st.session_state.selected_symbols = symbols
     if not symbols:
         return
@@ -111,17 +128,60 @@ def _handle_grid_sort_click(result, view_name: str, display_df: pd.DataFrame) ->
     return True
 
 
-def apply_grid_selection(result, summary_df, *, skip_if_sort: bool = False) -> None:
-    """Apply AG Grid component output — selection intent is already resolved in JS."""
+def sync_selection_from_grid_widget(
+    table_key: str, display_df: pd.DataFrame
+) -> None:
+    """Align session selection with the AG Grid widget (reruns often omit a new result)."""
+    widget = st.session_state.get(table_key)
+    if not isinstance(widget, dict):
+        return
+    symbols_from_widget = [
+        str(s).strip() for s in (widget.get("symbols") or []) if str(s).strip()
+    ]
+    if symbols_from_widget:
+        stored_symbols = list(st.session_state.get("selected_symbols") or [])
+        focus = symbols_from_widget[-1]
+        if (
+            symbols_from_widget != stored_symbols
+            or st.session_state.get("selected_symbol") != focus
+        ):
+            commit_selection_from_symbols(symbols_from_widget, display_df)
+        return
+    rows = sorted({int(r) for r in (widget.get("rows") or [])})
+    if not rows:
+        return
+    stored_rows = sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
+    if rows != stored_rows or not st.session_state.get("selected_symbols"):
+        commit_selection_state(rows, display_df)
+
+
+def apply_grid_selection(result, display_df, *, skip_if_sort: bool = False) -> None:
+    """Apply AG Grid output; row indices and symbols refer to the sorted display table."""
     if not result:
         return
     if skip_if_sort and result.get("sort_click"):
+        return
+    symbols_from_grid = [
+        str(s).strip() for s in (result.get("symbols") or []) if str(s).strip()
+    ]
+    if symbols_from_grid:
+        stored_symbols = list(st.session_state.get("selected_symbols") or [])
+        focus = symbols_from_grid[-1]
+        stored_rows = sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
+        new_rows = row_indices_for_symbols(display_df, symbols_from_grid)
+        if (
+            symbols_from_grid == stored_symbols
+            and st.session_state.get("selected_symbol") == focus
+            and new_rows == stored_rows
+        ):
+            return
+        commit_selection_from_symbols(symbols_from_grid, display_df)
         return
     rows = sorted({int(r) for r in (result.get("rows") or [])})
     stored = sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
     if rows == stored:
         return
-    commit_selection_state(rows, summary_df)
+    commit_selection_state(rows, display_df)
 
 
 def _grid_selected_rows(table_key: str | None = None) -> list[int]:
@@ -150,8 +210,9 @@ def _technical_controls_changed() -> bool:
     return any(current.get(k) != previous.get(k) for k in current)
 
 
-def prepare_table_selection_before_render(summary_df) -> None:
+def prepare_table_selection_before_render(display_df) -> None:
     """Preserve or clear AG Grid row selection across non-table reruns."""
+    table_key = portfolio_grid_widget_key()
     if st.session_state.pop("clear_table_selection", False):
         st.session_state.table_sel_rows = []
         st.session_state.selected_symbols = []
@@ -160,16 +221,18 @@ def prepare_table_selection_before_render(summary_df) -> None:
         clear_portfolio_table_widget()
         return
 
+    sync_selection_from_grid_widget(table_key, display_df)
+
     if st.session_state.pop(PRESERVE_TABLE_SELECTION_KEY, False):
-        prev_rows = st.session_state.get("table_sel_rows", [])
-        if prev_rows:
-            commit_selection_state(prev_rows, summary_df)
+        prev_symbols = list(st.session_state.get("selected_symbols") or [])
+        if prev_symbols:
+            commit_selection_from_symbols(prev_symbols, display_df)
         return
 
     if _technical_controls_changed():
-        prev_rows = st.session_state.get("table_sel_rows", [])
-        if prev_rows:
-            commit_selection_state(prev_rows, summary_df)
+        prev_symbols = list(st.session_state.get("selected_symbols") or [])
+        if prev_symbols:
+            commit_selection_from_symbols(prev_symbols, display_df)
 
 
 def _column_display_name(column: str) -> str:
@@ -700,7 +763,8 @@ def render_portfolio_table_grid(
     sort_changed = _handle_grid_sort_click(result, view_name, pre_sort_df) if result else False
     if sort_changed:
         st.rerun()
-    apply_grid_selection(result, selection_df, skip_if_sort=sort_changed)
+    apply_grid_selection(result, display_df, skip_if_sort=sort_changed)
+    sync_selection_from_grid_widget(table_key, display_df)
 
 
 def render_portfolio_table_readonly(summary_df, view_name, selection_df):
@@ -829,6 +893,14 @@ def _selection_df_for_view(view_name: str, summary_df: pd.DataFrame, holdings_df
     return summary_df
 
 
+def portfolio_table_display_df(
+    view_name: str, summary_df: pd.DataFrame, holdings_df=None
+) -> pd.DataFrame:
+    """Sorted portfolio rows as shown in AG Grid (for selection ↔ symbol mapping)."""
+    display_df, _, _ = _prepare_grid_display_df(view_name, summary_df, holdings_df=holdings_df)
+    return apply_table_sort(display_df, view_name)
+
+
 def render_portfolio_table_section():
     """Portfolio table with view switcher; ROI view supports inline holdings edits."""
     active = load_active_portfolio()
@@ -874,7 +946,8 @@ def render_portfolio_table_section():
 
     selection_df = _selection_df_for_view(view_name, summary_df, holdings_df)
     if not selection_df.empty:
-        prepare_table_selection_before_render(selection_df)
+        display_df = portfolio_table_display_df(view_name, summary_df, holdings_df)
+        prepare_table_selection_before_render(display_df)
 
     render_financial_data_loading_umbrella(view_name)
     portfolio_metadata_progress()

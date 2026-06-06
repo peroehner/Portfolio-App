@@ -30,27 +30,56 @@ def _analysis_symbols() -> list[str]:
     return list(ticker_liste)
 
 
-def _sync_ta_chart_symbol(symbols: list[str]) -> str:
-    """Keep chart symbol in sync with table focus; preserve chip index only within same focus."""
+def _ta_chip_focus_locked(symbols: list[str]) -> bool:
+    """True when the user explicitly picked the active symbol via a TA chip."""
+    chart_sym = str(st.session_state.get("ta_chart_symbol") or "").strip()
+    selected = str(st.session_state.get("selected_symbol") or "").strip()
+    return bool(chart_sym and chart_sym == selected and chart_sym in symbols)
+
+
+def _resolve_ta_chart_symbol(symbols: list[str]) -> str:
+    """Single source of truth for which symbol the TA panel charts."""
     if not symbols:
         return ""
-    selection_key = tuple(symbols)
-    focus = st.session_state.get("selected_symbol")
-    prev_key = st.session_state.get("_ta_selection_key")
-    prev_focus = st.session_state.get("_ta_sync_focus")
-    if prev_key != selection_key or prev_focus != focus:
-        st.session_state["_ta_selection_key"] = selection_key
-        st.session_state["_ta_sync_focus"] = focus
-        if focus and focus in symbols:
-            st.session_state.ta_nav_index = symbols.index(focus)
-        elif prev_key != selection_key:
-            st.session_state.ta_nav_index = 0
+    selected = str(st.session_state.get("selected_symbol") or "").strip()
+    chart_sym = str(st.session_state.get("ta_chart_symbol") or "").strip()
+    if (
+        selected in symbols
+        and chart_sym in symbols
+        and selected != chart_sym
+        and not _ta_chip_focus_locked(symbols)
+    ):
+        sym = selected
+    elif chart_sym in symbols:
+        sym = chart_sym
+    elif selected in symbols:
+        sym = selected
+    else:
+        sym = symbols[0]
+    idx = symbols.index(sym)
+    st.session_state.ta_nav_index = idx
+    st.session_state.ta_chart_symbol = sym
+    st.session_state.selected_symbol = sym
+    st.session_state["_ta_sync_focus"] = sym
+    st.session_state["_ta_selection_key"] = tuple(symbols)
+    return sym
+
+
+def _sync_ta_chart_symbol(symbols: list[str]) -> str:
+    return _resolve_ta_chart_symbol(symbols)
+
+
+def _ta_active_symbol(symbols: list[str]) -> tuple[str, int]:
+    """Symbol and index for the highlighted TA chip."""
+    if not symbols:
+        return "", 0
+    chart_sym = str(st.session_state.get("ta_chart_symbol") or "").strip()
+    if chart_sym in symbols:
+        idx = symbols.index(chart_sym)
+        return chart_sym, idx
     idx = int(st.session_state.get("ta_nav_index", 0))
     idx = max(0, min(idx, len(symbols) - 1))
-    st.session_state.ta_nav_index = idx
-    sym = symbols[idx]
-    st.session_state.ta_chart_symbol = sym
-    return sym
+    return symbols[idx], idx
 
 
 def _symbol_window(symbols: list[str], index: int, *, window: int = 7) -> tuple[int, int]:
@@ -69,7 +98,21 @@ def _ta_select_symbol(idx: int) -> None:
         st.session_state.ta_chart_symbol = sym
         st.session_state.selected_symbol = sym
         st.session_state["_ta_sync_focus"] = sym
-    mark_preserve_table_selection()
+        # Survives portfolio grid sync on the rerun triggered by this click.
+        st.session_state["_ta_pending_chart_symbol"] = sym
+        mark_preserve_table_selection()
+        st.rerun()
+
+
+def _apply_ta_pending_symbol(symbols: list[str]) -> None:
+    """Re-apply a TA chip click after portfolio table sync on the same rerun."""
+    pending = str(st.session_state.pop("_ta_pending_chart_symbol", "") or "").strip()
+    if not pending or pending not in symbols:
+        return
+    st.session_state.ta_nav_index = symbols.index(pending)
+    st.session_state.ta_chart_symbol = pending
+    st.session_state.selected_symbol = pending
+    st.session_state["_ta_sync_focus"] = pending
 
 
 def _ta_export_bundle() -> tuple[str, str, str, bool, str]:
@@ -104,10 +147,12 @@ def _ta_export_bundle() -> tuple[str, str, str, bool, str]:
     return export_label, export_data, file_name, export_ready, help_text
 
 
-def _render_symbol_nav_bar(symbols: list[str], index: int) -> None:
+def _render_symbol_nav_bar(symbols: list[str]) -> None:
     st.session_state["_ta_nav_symbols"] = symbols
+    active_sym, active_idx = _ta_active_symbol(symbols)
+    st.session_state.ta_nav_index = active_idx
     export_label, export_data, export_file, export_ready, export_help = _ta_export_bundle()
-    start, end = _symbol_window(symbols, index)
+    start, end = _symbol_window(symbols, active_idx)
 
     st.markdown('<div class="ta-symbol-nav-row-anchor"></div>', unsafe_allow_html=True)
     list_col, export_col = st.columns([5.65, 1.05], gap="small", vertical_alignment="center")
@@ -132,21 +177,20 @@ def _render_symbol_nav_bar(symbols: list[str], index: int) -> None:
 
         for i in range(start, end):
             sym = symbols[i]
-            is_active = i == index
+            is_active = sym == active_sym
             with cols[col_i]:
                 if is_active:
                     st.markdown(
-                        f'<span class="ta-sym-chip ta-sym-chip-active">{sym}</span>',
+                        f'<span class="ta-sym-chip ta-sym-chip-active" title="Charting {sym}">{sym}</span>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    st.button(
+                    if st.button(
                         sym,
                         key=f"ta_sym_{i}_{sym}",
                         use_container_width=True,
-                        on_click=_ta_select_symbol,
-                        kwargs={"idx": i},
-                    )
+                    ):
+                        _ta_select_symbol(i)
             col_i += 1
 
         if end < len(symbols):
@@ -233,18 +277,41 @@ def is_trend_overlay_enabled():
 
 
 def _main_trend_summary_html(main_trend, fib_trends) -> str:
-    """Compact one-line trend label for the controls row."""
+    """Compact trend card for the controls row."""
     if not main_trend:
-        return '<span class="tech-trend-slot tech-trend-empty">No trend in window</span>'
+        return (
+            '<div class="ta-trend-card empty tech-trend-slot">'
+            '<span>No significant trend in window</span>'
+            "</div>"
+        )
     main_trend_type = main_trend["type"]
-    trend_cls = "trend-bull" if main_trend_type == "Bullish" else "trend-bear"
+    tone = "bull" if main_trend_type == "Bullish" else "bear"
     trend_icon = get_trend_icon_html(main_trend_type)
+    move_pct = main_trend["move_pct"] * 100
+    trend_id = main_trend.get("id", "T1")
+    date_range = (
+        f"{main_trend['f_start'].strftime('%Y-%m-%d')} → "
+        f"{main_trend['f_end'].strftime('%Y-%m-%d')}"
+    )
+    trend_count = len(fib_trends)
+    trend_noun = "trend" if trend_count == 1 else "trends"
     return (
-        f'<span class="tech-trend-slot tech-trend-line {trend_cls}">'
-        f"{trend_icon}<b>{main_trend_type}</b> · "
-        f"{main_trend['f_start'].strftime('%Y-%m-%d')} → {main_trend['f_end'].strftime('%Y-%m-%d')} · "
-        f"{main_trend['move_pct'] * 100:+.1f}% · {len(fib_trends)} trend(s)"
-        "</span>"
+        f'<div class="ta-trend-card {tone} tech-trend-slot">'
+        f'<div class="ta-trend-leading">{trend_icon}</div>'
+        f'<div class="ta-trend-body">'
+        f'<div class="ta-trend-top">'
+        f'<span class="ta-trend-badge">{main_trend_type}</span>'
+        f'<span class="ta-trend-id">{trend_id}</span>'
+        f"</div>"
+        f'<div class="ta-trend-foot">'
+        f'<span class="ta-trend-range">{date_range}</span>'
+        f"</div>"
+        f"</div>"
+        f'<div class="ta-trend-stats">'
+        f'<span class="ta-trend-pct">{move_pct:+.1f}%</span>'
+        f'<span class="ta-trend-count">{trend_count} {trend_noun}</span>'
+        f"</div>"
+        f"</div>"
     )
 
 
@@ -361,14 +428,79 @@ def _compute_chart_data(hist_full):
     return vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor
 
 
-def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
-    st.markdown('<div class="tech-sidebar-anchor"></div>', unsafe_allow_html=True)
-    curr_p = pick["data"]["🌐 Price"]
+def _target_upside_pct(target, curr_p):
+    try:
+        if target is None or curr_p in (None, 0):
+            return None
+        if pd.isna(target) or pd.isna(curr_p):
+            return None
+        return ((float(target) / float(curr_p)) - 1) * 100
+    except (TypeError, ValueError):
+        return None
 
-    st.markdown(
-        '<p style="font-size:0.82rem;font-weight:700;margin:0.2rem 0 0.15rem 0;">Metrics</p>',
-        unsafe_allow_html=True,
+
+def _metric_card_html(label, target, curr_p):
+    up_val = _target_upside_pct(target, curr_p)
+    if up_val is None:
+        return ""
+    tone = "up" if up_val > 0 else ("down" if up_val < 0 else "flat")
+    arrow = "↑" if up_val > 0 else ("↓" if up_val < 0 else "→")
+    return (
+        f'<div class="ta-metric-card {tone}">'
+        f'<div class="ta-metric-top">'
+        f'<span class="ta-metric-label">{label}</span>'
+        f'<span class="ta-metric-value">${float(target):,.2f}</span>'
+        f"</div>"
+        f'<div class="ta-metric-foot">'
+        f'<span class="ta-metric-delta">{arrow} {abs(up_val):.1f}%</span>'
+        f'<span class="ta-metric-ref">vs ${float(curr_p):,.2f}</span>'
+        f"</div>"
+        f"</div>"
     )
+
+
+def _fib_rows_html(dynamic_fibs, curr_p):
+    if not dynamic_fibs or curr_p in (None, 0) or pd.isna(curr_p):
+        return '<div class="ta-fib-empty">No levels in window</div>'
+
+    rows = []
+    nearest_label = None
+    nearest_prox = float("inf")
+    for label, val in dynamic_fibs.items():
+        try:
+            prox = abs(float(curr_p) - float(val)) / float(val) * 100 if val else float("inf")
+        except (TypeError, ValueError, ZeroDivisionError):
+            prox = float("inf")
+        if prox < nearest_prox:
+            nearest_prox = prox
+            nearest_label = label
+
+    for label, val in dynamic_fibs.items():
+        try:
+            prox = abs(float(curr_p) - float(val)) / float(val) * 100 if val else float("inf")
+            price = float(val)
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        row_cls = "ta-fib-row"
+        if prox < 1.5:
+            row_cls += " near"
+        elif label == nearest_label and prox < 4.0:
+            row_cls += " closest"
+        short_label = label.replace(" Retracement", "").replace(" Center Line", "")
+        prox_html = (
+            f'<span class="ta-fib-prox">{prox:.1f}%</span>' if prox < 6.0 else ""
+        )
+        rows.append(
+            f'<div class="{row_cls}">'
+            f'<span class="ta-fib-lbl">{short_label}</span>'
+            f'<span class="ta-fib-val">${price:,.2f}</span>'
+            f"{prox_html}"
+            f"</div>"
+        )
+    return '<div class="ta-fib-list">' + "".join(rows) + "</div>"
+
+
+def _resolve_est_target(pick, selected_ticker, curr_p):
     try:
         target = pick["data"].get("Est Target")
         if target is None:
@@ -376,41 +508,74 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
             target = est_target or 0
             pick["data"]["Est Target"] = target
             if target and curr_p:
-                pick["data"]["Upside %"] = ((target / curr_p) - 1) * 100
-        if target:
-            up_val = ((target / curr_p) - 1) * 100
-            chip_cls = "metric-chip" if up_val > 0 else "metric-chip down"
-            arrow = "↑" if up_val > 0 else "↓"
-            st.markdown(
-                f'<div class="{chip_cls}">Target {target:.2f} $ · {arrow} {abs(up_val):.1f}% vs {curr_p:.2f} $</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("Analyst target not loaded")
+                pick["data"]["Upside %"] = _target_upside_pct(target, curr_p)
+        return target if target else None
     except Exception:
-        st.caption("Analyst target unavailable")
+        return None
 
-    div_y = pick["data"].get("Div Yield")
-    if div_y is not None and div_y > 0:
-        st.markdown(
-            f'<div class="metric-chip div">Div yield {div_y:.1f}%</div>',
-            unsafe_allow_html=True,
+
+def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
+    st.markdown('<div class="tech-sidebar-anchor"></div>', unsafe_allow_html=True)
+    curr_p = pick["data"]["🌐 Price"]
+    metric_cards = []
+
+    try:
+        price_txt = "—"
+        if curr_p is not None and not pd.isna(curr_p):
+            price_txt = f"${float(curr_p):,.2f}"
+        metric_cards.append(
+            f'<div class="ta-price-pill"><span>Current</span><strong>{price_txt}</strong></div>'
         )
 
+        est_target = _resolve_est_target(pick, selected_ticker, curr_p)
+        if est_target:
+            metric_cards.append(_metric_card_html("Est Target", est_target, curr_p))
+        else:
+            metric_cards.append(
+                '<div class="ta-metric-empty">Analyst target not loaded</div>'
+            )
+
+        personal_target = pick["data"].get("📈 Target")
+        if personal_target is not None and not pd.isna(personal_target):
+            metric_cards.append(
+                _metric_card_html("Personal Target", personal_target, curr_p)
+            )
+
+        div_y = pick["data"].get("Div Yield")
+        if div_y is not None and not pd.isna(div_y) and float(div_y) > 0:
+            metric_cards.append(
+                f'<div class="ta-metric-card div">'
+                f'<div class="ta-metric-top">'
+                f'<span class="ta-metric-label">Div Yield</span>'
+                f'<span class="ta-metric-value">{float(div_y):.1f}%</span>'
+                f"</div>"
+                f'<div class="ta-metric-foot">'
+                f'<span class="ta-metric-ref">annual estimate</span>'
+                f"</div>"
+                f"</div>"
+            )
+    except Exception:
+        metric_cards = ['<div class="ta-metric-empty">Metrics unavailable</div>']
+
+    window_start = st.session_state["calc_fib_start"]
+    window_end = st.session_state["calc_fib_end"]
     st.markdown(
-        '<p style="font-size:0.82rem;font-weight:700;margin:0.25rem 0 0.1rem 0;">Fibonacci</p>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        f"{st.session_state['calc_fib_start']} – {st.session_state['calc_fib_end']} · {fib_anchor}"
-    )
-    fib_lines = []
-    for label, val in dynamic_fibs.items():
-        prox = abs(curr_p - val) / val * 100
-        prefix = "🎯" if prox < 1.5 else "·"
-        fib_lines.append(f"{prefix} {label}: {val:.2f}")
-    st.markdown(
-        "<span style='font-size:0.78rem;line-height:1.35'>" + "<br>".join(fib_lines) + "</span>",
+        f"""
+        <div class="ta-side-panel">
+          <div class="ta-side-section">
+            <div class="ta-side-heading">Metrics</div>
+            <div class="ta-metric-stack">{"".join(metric_cards)}</div>
+          </div>
+          <div class="ta-side-section">
+            <div class="ta-side-heading">Fibonacci</div>
+            <div class="ta-fib-window">
+              <span class="ta-fib-range">{window_start} → {window_end}</span>
+            </div>
+            <div class="ta-fib-anchor">{fib_anchor}</div>
+            {_fib_rows_html(dynamic_fibs, curr_p)}
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -447,6 +612,7 @@ def render_detail_panel():
         return
 
     symbols = _analysis_symbols()
+    _apply_ta_pending_symbol(symbols)
     if not symbols:
         st.markdown(
             """
@@ -461,6 +627,7 @@ def render_detail_panel():
         )
         return
 
+    _render_symbol_nav_bar(symbols)
     selected_ticker = _sync_ta_chart_symbol(symbols)
 
     pick = next(
@@ -476,7 +643,6 @@ def render_detail_panel():
     available_months = hist_full.index.to_period("M").unique()
     month_options = [d.strftime("%Y-%m") for d in available_months]
     _ensure_month_range(month_options)
-    _render_symbol_nav_bar(symbols, st.session_state.ta_nav_index)
 
     vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor = _compute_chart_data(hist_full)
     _render_tech_controls_row(month_options, main_trend, fib_trends)
@@ -484,6 +650,13 @@ def render_detail_panel():
 
     chart_col, sidebar_col = st.columns([3.2, 0.8])
     with chart_col:
+        st.markdown(
+            f'<div class="ta-chart-heading">'
+            f'<span class="ta-chart-symbol">{selected_ticker}</span>'
+            f'<span class="ta-chart-meta">Price · trends · Fibonacci</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
         chart_key = (
             f"ta_chart_{selected_ticker}_{st.session_state['ui_fib_start']}_"
             f"{st.session_state['ui_fib_end']}_{int(inspect_active)}"

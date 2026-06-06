@@ -37,6 +37,18 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
     main_trend = fib_trends[0] if fib_trends else None
     dynamic_fibs, fib_anchor = compute_fibonacci_levels(calc_hist, main_trend)
     curr_p = pick["data"]["🌐 Price"]
+    personal_target = pick["data"].get("📈 Target")
+    try:
+        personal_upside = (
+            ((float(personal_target) / float(curr_p)) - 1) * 100
+            if personal_target is not None
+            and curr_p not in (None, 0)
+            and not pd.isna(personal_target)
+            and not pd.isna(curr_p)
+            else None
+        )
+    except (TypeError, ValueError):
+        personal_upside = None
 
     if fib_trends:
         detected_trends_str = "".join(
@@ -72,6 +84,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Analysis window: {window_start} to {window_end}
 Fibonacci anchor: {fib_anchor}
 Current Price: {_fmt_num(curr_p, 2)} $
+Personal Target: {_fmt_num(personal_target, 2)} $ (Upside: {_fmt_num(personal_upside, 1, '%')})
 1Y Mean Target estimate: {_fmt_num(pick['data'].get('Est Target'), 2)} $ (Upside: {_fmt_num(pick['data'].get('Upside %'), 1, '%')})
 Purchased {_fmt_num(shares, 2)} shares on {purchase} @ {_fmt_num(pick['data'].get('Cost/Share'), 2)} $
 {div_income_line}

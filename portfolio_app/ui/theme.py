@@ -295,6 +295,27 @@ APP_CSS = """
         > div[data-testid="column"]:last-child [data-testid="stDownloadButton"] button:disabled {
         opacity: 0.5 !important;
     }
+    .ta-chart-heading {
+        display: flex;
+        align-items: baseline;
+        gap: 0.55rem;
+        margin: 0 0 0.35rem 0;
+        padding: 0.15rem 0.1rem 0.25rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .ta-chart-symbol {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        color: #0f766e;
+    }
+    .ta-chart-meta {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
     .ta-sym-ellipsis {
         display: inline-flex;
         align-items: center;
@@ -842,49 +863,119 @@ APP_CSS = """
         overflow: hidden;
     }
     .tech-trend-slot {
+        margin: 0;
+        max-width: 100%;
+    }
+    .ta-trend-card {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        font-size: 0.78rem !important;
-        font-weight: 500;
-        line-height: 1.35;
-        white-space: nowrap;
+        gap: 0.45rem;
+        width: 100%;
         max-width: 100%;
+        min-height: var(--tech-controls-row-h, 2.15rem);
+        padding: 0.3rem 0.55rem;
+        border-radius: 8px;
+        border: 1px solid #d0d7de;
+        background: #f6f8fa;
+        box-shadow: 0 1px 2px rgba(27, 31, 36, 0.05);
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .ta-trend-card.bull {
+        border-color: #b7dfc8;
+        background: linear-gradient(180deg, #f3fbf6 0%, #eaf7ef 100%);
+    }
+    .ta-trend-card.bear {
+        border-color: #f5c2c0;
+        background: linear-gradient(180deg, #fff7f6 0%, #fdecea 100%);
+    }
+    .ta-trend-card.empty {
+        border-style: dashed;
+        border-color: #d0d7de;
+        background: #fafbfc;
+        color: #6e7781;
+        font-size: 0.72rem;
+        font-style: italic;
+        justify-content: center;
+    }
+    .ta-trend-leading {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .ta-trend-leading .trend-icon {
+        height: 1.75rem !important;
+        width: auto;
+        margin: 0 !important;
+        object-fit: contain;
+        border-radius: 5px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+    .ta-trend-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.08rem;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+    .ta-trend-top {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-width: 0;
+    }
+    .ta-trend-badge {
+        font-size: 0.74rem !important;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+    }
+    .ta-trend-card.bull .ta-trend-badge { color: #137333; }
+    .ta-trend-card.bear .ta-trend-badge { color: #c5221f; }
+    .ta-trend-id {
+        font-size: 0.62rem !important;
+        font-weight: 700;
+        color: #57606a;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 999px;
+        padding: 0.05rem 0.35rem;
+        white-space: nowrap;
+    }
+    .ta-trend-foot {
+        min-width: 0;
+    }
+    .ta-trend-range {
+        font-size: 0.66rem !important;
+        color: #57606a;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin: 0;
-        vertical-align: middle;
+        display: block;
     }
-    .tech-trend-slot,
-    .tech-trend-slot *:not(.trend-icon) {
-        font-size: 0.78rem !important;
-        line-height: 1.35 !important;
-    }
-    .tech-trend-slot.tech-trend-line.trend-bull {
-        color: #137333 !important;
-    }
-    .tech-trend-slot.tech-trend-line.trend-bear {
-        color: #c5221f !important;
-    }
-    .tech-trend-slot b {
-        font-size: inherit !important;
-        font-weight: 600;
-        line-height: inherit;
-        color: inherit;
-    }
-    .tech-trend-slot.tech-trend-empty {
-        color: #6b7280 !important;
-        font-style: italic;
-    }
-    .tech-trend-slot .trend-icon {
-        height: 1.65rem !important;
-        width: auto;
-        margin-right: 0 !important;
+    .ta-trend-stats {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 0.08rem;
         flex-shrink: 0;
-        vertical-align: middle;
-        object-fit: contain;
-        border-radius: 4px;
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+        margin-left: 0.15rem;
+    }
+    .ta-trend-pct {
+        font-size: 0.82rem !important;
+        font-weight: 800;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+    .ta-trend-card.bull .ta-trend-pct { color: #137333; }
+    .ta-trend-card.bear .ta-trend-pct { color: #c5221f; }
+    .ta-trend-count {
+        font-size: 0.62rem !important;
+        font-weight: 600;
+        color: #6e7781;
+        white-space: nowrap;
     }
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) [data-baseweb="select"] > div,
     div:has(> .tech-controls-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) [data-baseweb="select"] > div {
@@ -1092,22 +1183,188 @@ APP_CSS = """
         vertical-align: middle;
         margin-right: 0.3rem;
     }
-    .metric-chip {
-        background-color: #e6f4ea;
-        color: #137333;
-        padding: 6px 8px;
-        border-radius: 4px;
+    .ta-side-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        margin-top: 0.15rem;
+    }
+    .ta-side-section {
+        background: #f6f8fa;
+        border: 1px solid #d0d7de;
+        border-radius: 8px;
+        padding: 0.55rem 0.6rem 0.6rem;
+        box-shadow: 0 1px 2px rgba(27, 31, 36, 0.05);
+    }
+    .ta-side-heading {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #57606a;
+        margin: 0 0 0.45rem 0;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid #d8dee4;
+    }
+    .ta-metric-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+    .ta-price-pill {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.35rem;
+        padding: 0.35rem 0.5rem;
+        border-radius: 6px;
+        background: #fff;
+        border: 1px solid #d0d7de;
+        font-size: 0.72rem;
+        color: #57606a;
+    }
+    .ta-price-pill strong {
+        color: #111;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+    .ta-metric-card {
+        border-radius: 6px;
+        padding: 0.42rem 0.5rem;
+        border: 1px solid transparent;
+        background: #fff;
+    }
+    .ta-metric-card.up {
+        border-color: #b7dfc8;
+        background: linear-gradient(180deg, #f3fbf6 0%, #eaf7ef 100%);
+    }
+    .ta-metric-card.down {
+        border-color: #f5c2c0;
+        background: linear-gradient(180deg, #fff7f6 0%, #fdecea 100%);
+    }
+    .ta-metric-card.flat {
+        border-color: #d0d7de;
+        background: #fff;
+    }
+    .ta-metric-card.div {
+        border-color: #c6dafc;
+        background: linear-gradient(180deg, #f5f9ff 0%, #e8f0fe 100%);
+    }
+    .ta-metric-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.25rem;
+        margin-bottom: 0.2rem;
+    }
+    .ta-metric-label {
+        font-size: 0.68rem;
         font-weight: 600;
-        font-size: 11px;
-        margin-top: 4px;
+        color: #57606a;
+        line-height: 1.2;
     }
-    .metric-chip.down {
-        background-color: #fce8e6;
-        color: #c5221f;
+    .ta-metric-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #111;
+        white-space: nowrap;
     }
-    .metric-chip.div {
-        background-color: #e8f0fe;
-        color: #1a73e8;
+    .ta-metric-card.up .ta-metric-value { color: #137333; }
+    .ta-metric-card.down .ta-metric-value { color: #c5221f; }
+    .ta-metric-card.div .ta-metric-value { color: #1a73e8; }
+    .ta-metric-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.25rem;
+        font-size: 0.68rem;
+        line-height: 1.2;
+    }
+    .ta-metric-delta {
+        font-weight: 700;
+    }
+    .ta-metric-card.up .ta-metric-delta { color: #137333; }
+    .ta-metric-card.down .ta-metric-delta { color: #c5221f; }
+    .ta-metric-ref {
+        color: #6e7781;
+        white-space: nowrap;
+    }
+    .ta-metric-empty,
+    .ta-fib-empty {
+        font-size: 0.72rem;
+        color: #6e7781;
+        padding: 0.35rem 0.1rem;
+        font-style: italic;
+    }
+    .ta-fib-window {
+        margin-bottom: 0.3rem;
+    }
+    .ta-fib-range {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #1f77b4;
+        background: #fff;
+        border: 1px solid #c6dafc;
+        border-radius: 999px;
+        padding: 0.15rem 0.45rem;
+        white-space: nowrap;
+    }
+    .ta-fib-anchor {
+        font-size: 0.68rem;
+        color: #57606a;
+        line-height: 1.35;
+        margin: 0 0 0.4rem 0;
+        word-break: break-word;
+    }
+    .ta-fib-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.28rem;
+    }
+    .ta-fib-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: 0.2rem 0.35rem;
+        padding: 0.3rem 0.4rem;
+        border-radius: 5px;
+        background: #fff;
+        border: 1px solid #e1e4e8;
+        font-size: 0.68rem;
+        line-height: 1.2;
+    }
+    .ta-fib-row.closest {
+        border-color: #c6dafc;
+        background: #f5f9ff;
+    }
+    .ta-fib-row.near {
+        border-color: #f9ab00;
+        background: #fffbf0;
+        box-shadow: 0 0 0 1px rgba(249, 171, 0, 0.15);
+    }
+    .ta-fib-lbl {
+        color: #444;
+        font-weight: 500;
+        min-width: 0;
+    }
+    .ta-fib-val {
+        font-weight: 700;
+        color: #111;
+        white-space: nowrap;
+    }
+    .ta-fib-prox {
+        font-size: 0.62rem;
+        font-weight: 700;
+        color: #b06000;
+        background: #fff3cd;
+        border-radius: 999px;
+        padding: 0.1rem 0.3rem;
+        white-space: nowrap;
+    }
+    .ta-fib-row.near .ta-fib-prox {
+        color: #7a4e00;
+        background: #ffe08a;
     }
     [data-testid="stDataFrame"] td { color: black !important; }
     /* ROI editor: hide misleading auto-sum row (wrong % / $ totals) */

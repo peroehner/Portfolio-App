@@ -86,6 +86,8 @@ def commit_selection_from_symbols(symbols: list[str], display_df: pd.DataFrame) 
     last_row_idx = rows[-1] if rows else None
     if st.session_state.get("selected_symbol") != focus:
         st.session_state.selected_symbol = focus
+        st.session_state.ta_chart_symbol = focus
+        st.session_state.ta_nav_index = max(0, len(symbols) - 1)
         st.session_state.ticker_index = last_row_idx
         prioritize_metadata_symbol(focus)
         prioritize_valuation_symbol(focus)
@@ -101,6 +103,8 @@ def commit_selection_state(rows, display_df):
     focus = symbols[-1]
     if st.session_state.get("selected_symbol") != focus:
         st.session_state.selected_symbol = focus
+        st.session_state.ta_chart_symbol = focus
+        st.session_state.ta_nav_index = max(0, len(symbols) - 1)
         st.session_state.ticker_index = last_row_idx
         prioritize_metadata_symbol(focus)
         prioritize_valuation_symbol(focus)
@@ -128,6 +132,15 @@ def _handle_grid_sort_click(result, view_name: str, display_df: pd.DataFrame) ->
     return True
 
 
+def _should_keep_ta_chip_focus(symbols_from_widget: list[str]) -> bool:
+    """TA chip may focus a symbol that is not the grid widget's last-selected row."""
+    ta_focus = str(st.session_state.get("ta_chart_symbol") or "").strip()
+    selected = str(st.session_state.get("selected_symbol") or "").strip()
+    if not ta_focus or ta_focus != selected:
+        return False
+    return ta_focus in symbols_from_widget
+
+
 def sync_selection_from_grid_widget(
     table_key: str, display_df: pd.DataFrame
 ) -> None:
@@ -141,6 +154,17 @@ def sync_selection_from_grid_widget(
     if symbols_from_widget:
         stored_symbols = list(st.session_state.get("selected_symbols") or [])
         focus = symbols_from_widget[-1]
+        if _should_keep_ta_chip_focus(symbols_from_widget):
+            if symbols_from_widget != stored_symbols:
+                st.session_state.selected_symbols = symbols_from_widget
+                if not display_df.empty:
+                    st.session_state.table_sel_rows = row_indices_for_symbols(
+                        display_df, symbols_from_widget
+                    )
+            st.session_state.ta_nav_index = symbols_from_widget.index(
+                st.session_state.selected_symbol
+            )
+            return
         if (
             symbols_from_widget != stored_symbols
             or st.session_state.get("selected_symbol") != focus
@@ -165,6 +189,8 @@ def apply_grid_selection(result, display_df, *, skip_if_sort: bool = False) -> N
         str(s).strip() for s in (result.get("symbols") or []) if str(s).strip()
     ]
     if symbols_from_grid:
+        if _should_keep_ta_chip_focus(symbols_from_grid):
+            return
         stored_symbols = list(st.session_state.get("selected_symbols") or [])
         focus = symbols_from_grid[-1]
         stored_rows = sorted({int(r) for r in st.session_state.get("table_sel_rows", [])})
@@ -225,7 +251,7 @@ def prepare_table_selection_before_render(display_df) -> None:
 
     if st.session_state.pop(PRESERVE_TABLE_SELECTION_KEY, False):
         prev_symbols = list(st.session_state.get("selected_symbols") or [])
-        if prev_symbols:
+        if prev_symbols and not _should_keep_ta_chip_focus(prev_symbols):
             commit_selection_from_symbols(prev_symbols, display_df)
         return
 
@@ -810,19 +836,21 @@ def _edit_portfolio_expander_open_key(portfolio_id: int) -> str:
     return f"portfolio_edit_expander_open_{portfolio_id}"
 
 
-def _is_edit_portfolio_expander_open(portfolio_id: int) -> bool:
+def clear_edit_portfolio_expander_state(portfolio_id: int) -> None:
+    """Drop expander open/closed widget state (e.g. after reload or portfolio switch)."""
+    st.session_state.pop(_edit_portfolio_expander_open_key(portfolio_id), None)
+
+
+def _prepare_edit_portfolio_expander_state(portfolio_id: int) -> None:
     """
-    Keep Edit portfolio expanded across data_editor reruns (e.g. Tab between cells).
-    Streamlit reruns the whole page on each edit; expanded=False collapses the section.
+    Open Edit portfolio only when the user just triggered an edit action (add symbol).
+    Respect manual collapse on later reruns — holdings edits stay inside @st.fragment.
     """
     open_key = _edit_portfolio_expander_open_key(portfolio_id)
     if st.session_state.pop("_pending_expand_edit_portfolio", False):
         st.session_state[open_key] = True
-    if has_holdings_draft(portfolio_id):
-        st.session_state[open_key] = True
-    if holdings_editor_widget_key(portfolio_id) in st.session_state:
-        st.session_state[open_key] = True
-    return bool(st.session_state.get(open_key, False))
+    elif open_key not in st.session_state:
+        st.session_state[open_key] = False
 
 
 def _render_edit_portfolio_expander(
@@ -834,9 +862,10 @@ def _render_edit_portfolio_expander(
     save_clicked = False
     draft_label = " (unsaved edits)" if has_holdings_draft(portfolio_id) else ""
     open_key = _edit_portfolio_expander_open_key(portfolio_id)
+    _prepare_edit_portfolio_expander_state(portfolio_id)
     with st.expander(
         f"Edit portfolio{draft_label}",
-        expanded=_is_edit_portfolio_expander_open(portfolio_id),
+        key=open_key,
     ):
         st.caption(
             "Your holdings only — the views above show **merged** totals per symbol until you save. "
@@ -844,7 +873,6 @@ def _render_edit_portfolio_expander(
         )
         save_clicked = _render_add_symbol_bar(portfolio_id)
         edited = _holdings_editor_fragment(editor_df, portfolio_id=portfolio_id)
-    st.session_state[open_key] = True
     return save_clicked, edited
 
 

@@ -15,10 +15,11 @@
             "module": "streamlit",
             "args": [
                 "run",
-                "${file}",
+                "${workspaceFolder}/app.py",
                 "--server.port",
                 "8501"
             ],
+            "cwd": "${workspaceFolder}",
             "jinja": true,
             "justMyCode": true
         }

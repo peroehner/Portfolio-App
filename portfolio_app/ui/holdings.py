@@ -32,10 +32,12 @@ def _draft_key(portfolio_id: int) -> str:
 def clear_holdings_draft(portfolio_id: int):
     st.session_state.pop(_draft_key(portfolio_id), None)
     from portfolio_app.session_keys import clear_portfolio_table_widget
+    from portfolio_app.ui.table import clear_edit_portfolio_expander_state
 
     clear_portfolio_table_widget()
     st.session_state.pop("portfolio_table_roi_editor", None)
     bump_holdings_editor_generation(portfolio_id)
+    clear_edit_portfolio_expander_state(portfolio_id)
 
 
 def _holdings_editor_gen_key(portfolio_id: int) -> str:

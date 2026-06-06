@@ -140,9 +140,13 @@ def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True
     get_portfolio_service().remember_last_portfolio(active.user_id, active.portfolio_id)
     st.session_state["portfolio_selector"] = active.name
     st.session_state["_force_portfolio_selector_sync"] = active.name
+    from portfolio_app.ui.table import clear_edit_portfolio_expander_state
+
     if previous_id and previous_id != active.portfolio_id:
         st.session_state.pop(f"holdings_draft_{previous_id}", None)
+        clear_edit_portfolio_expander_state(previous_id)
     st.session_state.pop(f"holdings_draft_{active.portfolio_id}", None)
+    clear_edit_portfolio_expander_state(active.portfolio_id)
     clear_portfolio_table_widget()
     st.session_state.pop("portfolio_table_roi_editor", None)
     st.session_state.pop("selected_symbol", None)

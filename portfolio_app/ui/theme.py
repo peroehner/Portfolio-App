@@ -30,9 +30,10 @@ APP_CSS = """
         padding-bottom: 0 !important;
     }
     div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] [data-testid="stImage"] img {
-        max-height: 60px;
+        max-height: 72px;
         width: auto;
         object-fit: contain;
+        border-radius: 6px;
     }
     .app-headings {
         min-width: 0;
@@ -1310,6 +1311,28 @@ APP_CSS = """
         padding: 0.15rem 0.45rem;
         white-space: nowrap;
     }
+    .ta-fib-sticky-badge {
+        display: inline-block;
+        margin-left: 0.35rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #7c3aed;
+        background: #f3e8ff;
+        border: 1px solid #d8b4fe;
+        border-radius: 999px;
+        padding: 0.12rem 0.4rem;
+        vertical-align: middle;
+    }
+    .ta-pin-woi-inline {
+        display: inline-block;
+        margin-left: 0.1rem;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: #5b21b6;
+        white-space: nowrap;
+    }
     .ta-fib-anchor {
         font-size: 0.68rem;
         color: #57606a;
@@ -1390,7 +1413,7 @@ def inject_desktop_icons():
         <script>
         (function () {
             var origin = window.location.origin;
-            var icon = origin + "/static/myPeroLogo.png";
+            var icon = origin + "/static/compass-icon.png";
             function addLink(rel, href, sizes) {
                 var sel = 'link[rel="' + rel + '"]';
                 if (document.querySelector(sel)) return;

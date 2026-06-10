@@ -134,6 +134,7 @@ class PortfolioService:
             allow_empty=holdings_df.empty,
         )
         self.repo.copy_symbol_snapshots(source_portfolio_id, portfolio.id)
+        self.repo.copy_symbol_ta_woi(source_portfolio_id, portfolio.id)
         keep_symbols = holdings_df["Symbol"].astype(str).str.strip().str.upper().tolist()
         self.repo.prune_symbol_snapshots(portfolio.id, keep_symbols)
         source_sync = self.repo.get_sync_state(source_portfolio_id)

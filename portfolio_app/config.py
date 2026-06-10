@@ -5,14 +5,12 @@ APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Override with PERO_DB_PATH to use a dedicated DB per host (deploy vs local).
 DB_PATH = os.environ.get("PERO_DB_PATH") or os.path.join(APP_DIR, "data", "pero.db")
 
-LOGO_PATH = os.path.join(APP_DIR, "static", "myPeroLogo.png")
-if not os.path.exists(LOGO_PATH):
-    LOGO_PATH = os.path.join(APP_DIR, "myPeroLogo.png")
+LOGO_PATH = os.path.join(APP_DIR, "static", "compass-logo.png")
 
 PAGE_ICON = (
-    os.path.join("static", "myPeroLogo.png")
-    if os.path.exists(os.path.join(APP_DIR, "static", "myPeroLogo.png"))
-    else "myPeroLogo.png"
+    os.path.join("static", "compass-icon.png")
+    if os.path.exists(os.path.join(APP_DIR, "static", "compass-icon.png"))
+    else os.path.join("static", "compass-logo.png")
 )
 
 BULL_TREND_PATH = os.path.join(APP_DIR, "bull-trend.png")

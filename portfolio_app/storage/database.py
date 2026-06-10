@@ -6,7 +6,7 @@ from pathlib import Path
 from portfolio_app.config import DB_PATH
 
 # Bump when adding migrations in _run_schema_migrations.
-SCHEMA_USER_VERSION = 1
+SCHEMA_USER_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -86,6 +86,21 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_portfolio
     ON symbol_financial_snapshot (portfolio_id, symbol);
 """
 
+_SCHEMA_V2_TA_WOI = """
+CREATE TABLE IF NOT EXISTS symbol_ta_woi (
+    portfolio_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    window_start TEXT NOT NULL,
+    window_end TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (portfolio_id, symbol),
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_ta_woi_portfolio
+    ON symbol_ta_woi (portfolio_id, symbol);
+"""
+
 
 def ensure_db_dir():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -150,4 +165,9 @@ def _run_schema_migrations(conn: sqlite3.Connection):
             SELECT id, 'never' FROM portfolios
             """
         )
-        conn.execute(f"PRAGMA user_version = {SCHEMA_USER_VERSION}")
+        conn.execute("PRAGMA user_version = 1")
+        version = 1
+
+    if version < 2:
+        conn.executescript(_SCHEMA_V2_TA_WOI)
+        conn.execute("PRAGMA user_version = 2")

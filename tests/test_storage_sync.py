@@ -42,6 +42,7 @@ class StorageSyncTestCase(unittest.TestCase):
         self.assertEqual(SCHEMA_USER_VERSION, version)
         self.assertIn("portfolio_sync_state", tables)
         self.assertIn("symbol_financial_snapshot", tables)
+        self.assertIn("symbol_ta_woi", tables)
 
     def test_create_portfolio_has_sync_state(self):
         user = self.repo.get_or_create_user("phase1@example.com")

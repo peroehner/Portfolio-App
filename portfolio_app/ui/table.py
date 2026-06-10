@@ -228,12 +228,15 @@ def _technical_controls_changed() -> bool:
         "calc_fib_start": st.session_state.get("calc_fib_start"),
         "calc_fib_end": st.session_state.get("calc_fib_end"),
         "fibo_trend_inspect": st.session_state.get("fibo_trend_inspect"),
+        "sticky_woi_enabled": st.session_state.get("sticky_woi_enabled"),
     }
     previous = st.session_state.get("_last_tech_controls_state")
     st.session_state["_last_tech_controls_state"] = current
     if not previous:
         return False
-    return any(current.get(k) != previous.get(k) for k in current)
+    # Pin WoI is handled in its own callback — must not reshuffle TA symbol focus.
+    control_keys = [k for k in current if k != "sticky_woi_enabled"]
+    return any(current.get(k) != previous.get(k) for k in control_keys)
 
 
 def prepare_table_selection_before_render(display_df) -> None:

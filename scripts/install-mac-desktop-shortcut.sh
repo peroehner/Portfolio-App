@@ -6,13 +6,13 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="Pero Portfolio"
 DESKTOP="${HOME}/Desktop"
 APP_PATH="${DESKTOP}/${APP_NAME}.app"
-ICON_PNG="${PROJECT_DIR}/static/myPeroLogo.png"
+ICON_PNG="${PROJECT_DIR}/static/compass-icon.png"
 
 if [[ ! -f "${ICON_PNG}" ]]; then
-  ICON_PNG="${PROJECT_DIR}/myPeroLogo.png"
+  ICON_PNG="${PROJECT_DIR}/static/compass-logo.png"
 fi
 if [[ ! -f "${ICON_PNG}" ]]; then
-  echo "Logo not found. Expected static/myPeroLogo.png or myPeroLogo.png"
+  echo "Logo not found. Expected static/compass-icon.png or static/compass-logo.png"
   exit 1
 fi
 

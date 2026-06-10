@@ -688,3 +688,88 @@ class PortfolioRepository:
             for snap in snapshots
         ]
         return self.upsert_symbol_snapshots(dest_portfolio_id, cloned)
+
+    def get_symbol_ta_woi_map(self, portfolio_id: int) -> dict[str, dict[str, str]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT symbol, window_start, window_end
+                FROM symbol_ta_woi
+                WHERE portfolio_id = ?
+                """,
+                (portfolio_id,),
+            ).fetchall()
+        return {
+            _normalize_symbol(row["symbol"]): {
+                "start": row["window_start"],
+                "end": row["window_end"],
+            }
+            for row in rows
+        }
+
+    def set_symbol_ta_woi(
+        self,
+        portfolio_id: int,
+        symbol: str,
+        window_start: str,
+        window_end: str,
+    ) -> None:
+        symbol = _normalize_symbol(symbol)
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO symbol_ta_woi (
+                    portfolio_id, symbol, window_start, window_end, updated_at
+                )
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(portfolio_id, symbol) DO UPDATE SET
+                    window_start = excluded.window_start,
+                    window_end = excluded.window_end,
+                    updated_at = datetime('now')
+                """,
+                (portfolio_id, symbol, window_start, window_end),
+            )
+
+    def clear_symbol_ta_woi(self, portfolio_id: int, symbol: str) -> None:
+        symbol = _normalize_symbol(symbol)
+        with get_connection() as conn:
+            conn.execute(
+                """
+                DELETE FROM symbol_ta_woi
+                WHERE portfolio_id = ? AND symbol = ?
+                """,
+                (portfolio_id, symbol),
+            )
+
+    def copy_symbol_ta_woi(self, source_portfolio_id: int, dest_portfolio_id: int) -> int:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT symbol, window_start, window_end
+                FROM symbol_ta_woi
+                WHERE portfolio_id = ?
+                """,
+                (source_portfolio_id,),
+            ).fetchall()
+            count = 0
+            for row in rows:
+                conn.execute(
+                    """
+                    INSERT INTO symbol_ta_woi (
+                        portfolio_id, symbol, window_start, window_end, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(portfolio_id, symbol) DO UPDATE SET
+                        window_start = excluded.window_start,
+                        window_end = excluded.window_end,
+                        updated_at = datetime('now')
+                    """,
+                    (
+                        dest_portfolio_id,
+                        row["symbol"],
+                        row["window_start"],
+                        row["window_end"],
+                    ),
+                )
+                count += 1
+            return count

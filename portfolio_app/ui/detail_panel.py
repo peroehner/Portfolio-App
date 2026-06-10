@@ -11,6 +11,19 @@ from portfolio_app.ui.charts import create_chart
 from portfolio_app.ui.components import get_trend_icon_html
 from portfolio_app.ui.export import build_multi_export_datasets
 from portfolio_app.ui.components import mark_preserve_table_selection
+from portfolio_app.services.ta_woi_service import (
+    STICKY_WOI_CHECKBOX_KEY,
+    STICKY_WOI_SESSION_KEY,
+    export_windows_for_symbols,
+    ensure_ta_window_for_symbol,
+    get_default_window,
+    get_sticky_woi,
+    load_sticky_woi_for_portfolio,
+    on_sticky_woi_toggle,
+    on_window_controls_change,
+    sticky_woi_note_html,
+)
+from portfolio_app.services.session_context import load_active_portfolio
 
 
 def _analysis_symbols() -> list[str]:
@@ -117,16 +130,24 @@ def _apply_ta_pending_symbol(symbols: list[str]) -> None:
 
 def _ta_export_bundle() -> tuple[str, str, str, bool, str]:
     export_symbols = st.session_state.get("selected_symbols") or []
-    export_window_start = st.session_state.get("sel_start_ui")
-    export_window_end = st.session_state.get("sel_end_ui")
-    export_ready = bool(export_symbols and export_window_start and export_window_end)
+    default_start, default_end = get_default_window()
+    if not default_start or not default_end:
+        default_start = st.session_state.get("sel_start_ui")
+        default_end = st.session_state.get("sel_end_ui")
+    export_ready = bool(export_symbols and default_start and default_end)
     export_data = ""
     if export_ready:
+        symbol_windows = export_windows_for_symbols(
+            export_symbols,
+            default_start,
+            default_end,
+        )
         export_data = build_multi_export_datasets(
             export_symbols,
-            export_window_start,
-            export_window_end,
+            default_start,
+            default_end,
             st.session_state.all_results,
+            symbol_windows=symbol_windows,
         )
     export_label = (
         f"Export ({len(export_symbols)})"
@@ -135,14 +156,14 @@ def _ta_export_bundle() -> tuple[str, str, str, bool, str]:
     )
     file_name = (
         f"Analysis_{len(export_symbols)}_symbols_"
-        f"{export_window_start}_{export_window_end}.txt"
+        f"{default_start}_{default_end}.txt"
         if export_ready
         else "Analysis.txt"
     )
     help_text = (
-        "Export technical datasets for all selected table rows "
-        f"using the current From–To window ({export_window_start or '—'} → "
-        f"{export_window_end or '—'})."
+        "Export technical datasets for all selected table rows using the default "
+        f"From–To window ({default_start or '—'} → {default_end or '—'}). "
+        "Symbols with a pinned WoI use their saved range instead."
     )
     return export_label, export_data, file_name, export_ready, help_text
 
@@ -230,6 +251,9 @@ def _ensure_month_range(month_options):
         st.session_state["calc_fib_end"] = end_default
         st.session_state["sel_start_ui"] = start_default
         st.session_state["sel_end_ui"] = end_default
+        from portfolio_app.services.ta_woi_service import set_default_window
+
+        set_default_window(start_default, end_default)
         st.session_state["fibo_needs_refresh"] = False
     else:
         start = _clamp_month_in_options(
@@ -320,6 +344,7 @@ def _bump_start_forward():
     idx_start = opts.index(st.session_state["sel_start_ui"])
     idx_end = opts.index(st.session_state["sel_end_ui"])
     st.session_state["sel_start_ui"] = opts[min(idx_start + 3, idx_end)]
+    on_window_controls_change()
     mark_preserve_table_selection()
 
 
@@ -328,12 +353,14 @@ def _bump_end_backward():
     idx_start = opts.index(st.session_state["sel_start_ui"])
     idx_end = opts.index(st.session_state["sel_end_ui"])
     st.session_state["sel_end_ui"] = opts[max(idx_end - 3, idx_start)]
+    on_window_controls_change()
     mark_preserve_table_selection()
 
 
 def _apply_reanalyse():
     st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
     st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
+    on_window_controls_change()
     mark_preserve_table_selection()
 
 
@@ -365,6 +392,7 @@ def _render_tech_controls_row(month_options, main_trend, fib_trends):
             options=month_options,
             key="sel_start_ui",
             label_visibility="collapsed",
+            on_change=on_window_controls_change,
         )
     with t_col_start_btn:
         st.button(
@@ -386,6 +414,7 @@ def _render_tech_controls_row(month_options, main_trend, fib_trends):
             options=month_options,
             key="sel_end_ui",
             label_visibility="collapsed",
+            on_change=on_window_controls_change,
         )
 
     st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
@@ -407,6 +436,23 @@ def _render_tech_controls_row(month_options, main_trend, fib_trends):
 
     with t_col_toggle:
         st.toggle("Trend overlay", value=True, key="fibo_trend_inspect")
+
+    symbol = str(st.session_state.get("ta_chart_symbol") or "").strip().upper()
+    pin_col, pin_note_col = st.columns([0.72, 4.5], gap="small", vertical_alignment="center")
+    with pin_col:
+        st.checkbox(
+            "Pin WoI",
+            key=STICKY_WOI_CHECKBOX_KEY,
+            on_change=on_sticky_woi_toggle,
+            help=(
+                "Pin the current From–To window to this symbol. "
+                "Uncheck to remove and use the default TA window again."
+            ),
+        )
+    with pin_note_col:
+        sticky_note = sticky_woi_note_html(symbol)
+        if sticky_note:
+            st.markdown(sticky_note, unsafe_allow_html=True)
 
 
 def _compute_chart_data(hist_full):
@@ -559,6 +605,11 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
 
     window_start = st.session_state["calc_fib_start"]
     window_end = st.session_state["calc_fib_end"]
+    sticky_badge = (
+        '<span class="ta-fib-sticky-badge">Pin WoI</span>'
+        if get_sticky_woi(selected_ticker)
+        else ""
+    )
     st.markdown(
         f"""
         <div class="ta-side-panel">
@@ -570,6 +621,7 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
             <div class="ta-side-heading">Fibonacci</div>
             <div class="ta-fib-window">
               <span class="ta-fib-range">{window_start} → {window_end}</span>
+              {sticky_badge}
             </div>
             <div class="ta-fib-anchor">{fib_anchor}</div>
             {_fib_rows_html(dynamic_fibs, curr_p)}
@@ -639,9 +691,13 @@ def render_detail_panel():
         return
 
     pick = _ensure_analyst_data(selected_ticker, pick)
+    if STICKY_WOI_SESSION_KEY not in st.session_state:
+        active = load_active_portfolio()
+        load_sticky_woi_for_portfolio(active.portfolio_id)
     hist_full = _load_hist_for_ticker(selected_ticker, pick)
     available_months = hist_full.index.to_period("M").unique()
     month_options = [d.strftime("%Y-%m") for d in available_months]
+    ensure_ta_window_for_symbol(selected_ticker, month_options)
     _ensure_month_range(month_options)
 
     vis_hist, fib_trends, main_trend, dynamic_fibs, fib_anchor = _compute_chart_data(hist_full)

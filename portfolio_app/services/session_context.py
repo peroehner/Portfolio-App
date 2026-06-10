@@ -157,6 +157,10 @@ def activate_portfolio(active: ActivePortfolio, *, refetch_metadata: bool = True
     st.session_state.pop("ta_chart_symbol", None)
     st.session_state.pop("_ta_selection_key", None)
     st.session_state.pop("_ta_nav_symbols", None)
+    from portfolio_app.services.ta_woi_service import clear_ta_window_state, load_sticky_woi_for_portfolio
+
+    clear_ta_window_state()
+    load_sticky_woi_for_portfolio(active.portfolio_id)
     _reset_portfolio_display_state()
     invalidate_analysis(refetch_metadata=refetch_metadata)
 

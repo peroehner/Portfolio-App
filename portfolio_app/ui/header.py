@@ -11,9 +11,9 @@ def render_header():
     header_logo_col, header_title_col = st.columns([0.42, 5.58], vertical_alignment="center")
     with header_logo_col:
         if os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, width=60)
+            st.image(LOGO_PATH, width=52)
         else:
-            st.caption("Pero")
+            st.caption("Compass")
     with header_title_col:
         st.markdown(
             '<div class="app-headings">'

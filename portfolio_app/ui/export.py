@@ -22,6 +22,15 @@ def _fmt_num(value, decimals=2, suffix=""):
         return "-"
 
 
+def _format_trend_line(trend):
+    return (
+        f"- {trend['id']} ({trend['type']}): "
+        f"{trend['f_start'].strftime('%Y-%m-%d')} {_fmt_num(trend['price_start'], 2)} $ to "
+        f"{trend['f_end'].strftime('%Y-%m-%d')} {_fmt_num(trend['price_end'], 2)} $ "
+        f"(Move: {trend['move_pct'] * 100:.1f}%)\n"
+    )
+
+
 def build_symbol_export_block(symbol, window_start, window_end, all_results):
     pick = next((item for item in all_results if item["data"]["Symbol"] == symbol), None)
     if not pick:
@@ -51,11 +60,7 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
         personal_upside = None
 
     if fib_trends:
-        detected_trends_str = "".join(
-            f"- {t['id']} ({t['type']}): {t['f_start'].strftime('%Y-%m-%d')} to "
-            f"{t['f_end'].strftime('%Y-%m-%d')} (Move: {t['move_pct'] * 100:.1f}%)\n"
-            for t in fib_trends
-        )
+        detected_trends_str = "".join(_format_trend_line(t) for t in fib_trends)
     else:
         detected_trends_str = "- No significant trends detected.\n"
 
@@ -98,22 +103,44 @@ Valuation Growth:
 - P-Score (private portfolio): {p_score}
 - Grade (private portfolio): {p_grade}
 
+Time window: {window_start} → {window_end}
 Detected Trends:
 {detected_trends_str}
 Fibonacci Levels:
 {fib_levels_str}"""
 
 
-def build_multi_export_datasets(symbols, window_start, window_end, all_results):
-    blocks = [
-        build_symbol_export_block(symbol, window_start, window_end, all_results)
-        for symbol in symbols
-    ]
-    blocks = [b for b in blocks if b]
+def build_multi_export_datasets(
+    symbols,
+    default_window_start,
+    default_window_end,
+    all_results,
+    symbol_windows=None,
+):
+    symbol_windows = symbol_windows or {}
+    blocks = []
+    for symbol in symbols:
+        window = symbol_windows.get(symbol) or {}
+        window_start = window.get("start") or default_window_start
+        window_end = window.get("end") or default_window_end
+        block = build_symbol_export_block(symbol, window_start, window_end, all_results)
+        if block:
+            blocks.append(block)
     header = (
         f"[PORTFOLIO EXPORT — {len(blocks)} symbol(s)]\n"
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"Time window: {window_start} → {window_end}\n"
+        f"Default time window: {default_window_start} → {default_window_end}\n"
         f"Symbols: {', '.join(symbols)}\n"
     )
+    sticky_symbols = [
+        symbol
+        for symbol in symbols
+        if symbol_windows.get(symbol, {}).get("is_sticky")
+    ]
+    if sticky_symbols:
+        header += (
+            "Pinned WoI overrides: "
+            + ", ".join(sticky_symbols)
+            + "\n"
+        )
     return header + ("\n" + ("=" * 72) + "\n\n").join(blocks)

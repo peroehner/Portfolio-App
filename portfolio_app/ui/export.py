@@ -5,12 +5,10 @@ import pandas as pd
 
 from portfolio_app.analysis.fibonacci import (
     compute_fibonacci_levels,
-    normalize_ohlc_hist,
     slice_hist_to_window,
 )
 from portfolio_app.analysis.trends import find_multiple_trends
-from portfolio_app.config import DETAIL_HISTORY_PERIOD
-from portfolio_app.data.market_data import get_ticker_ohlc_history
+from portfolio_app.ui.history_controls import portfolio_ohlc_from_pick
 
 
 def _fmt_num(value, decimals=2, suffix=""):
@@ -35,9 +33,9 @@ def build_symbol_export_block(symbol, window_start, window_end, all_results):
     pick = next((item for item in all_results if item["data"]["Symbol"] == symbol), None)
     if not pick:
         return ""
-    hist_full = normalize_ohlc_hist(get_ticker_ohlc_history(symbol, DETAIL_HISTORY_PERIOD))
-    if hist_full.empty:
-        hist_full = normalize_ohlc_hist(pick["hist"])
+    import streamlit as st
+
+    hist_full = portfolio_ohlc_from_pick(pick)
     if hist_full.empty:
         return f"[TECHNICAL ANALYSIS EXPORT: {symbol}]\nNo price history available.\n"
 

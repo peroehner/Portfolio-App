@@ -8,7 +8,12 @@ import streamlit as st
 import yfinance as yf
 
 from portfolio_app.analysis.returns import extract_dividend_yield, normalize_dividend_yield
-from portfolio_app.config import DETAIL_HISTORY_PERIOD, TABLE_HISTORY_PERIOD
+from portfolio_app.config import (
+    DETAIL_HISTORY_MAX_MONTHS,
+    DETAIL_HISTORY_PERIOD,
+    HISTORY_MONTHS_MAX,
+    TABLE_HISTORY_PERIOD,
+)
 
 
 def _coerce_float(value, default=0.0) -> float:
@@ -40,12 +45,42 @@ def _close_frame_from_bulk(bulk_data, symbols: list[str]) -> pd.DataFrame:
     return bulk_data["Close"].dropna(how="all")
 
 
-def _fetch_close_per_symbol(symbols: list[str], period: str) -> pd.DataFrame:
+def clamp_history_months(months: int | float | None) -> int:
+    """Clamp history slider to [1, HISTORY_MONTHS_MAX]."""
+    try:
+        value = int(months)
+    except (TypeError, ValueError):
+        value = HISTORY_MONTHS_MAX
+    return max(1, min(value, HISTORY_MONTHS_MAX))
+
+
+def history_start_date(months: int) -> pd.Timestamp:
+    """Calendar start for a months-based Yahoo history request."""
+    return (pd.Timestamp.now() - pd.DateOffset(months=clamp_history_months(months))).normalize()
+
+
+def _yahoo_history_kwargs(
+    *,
+    period: str = TABLE_HISTORY_PERIOD,
+    history_months: int | None = None,
+) -> dict:
+    if history_months is not None:
+        return {"start": history_start_date(history_months), "auto_adjust": True}
+    return {"period": period}
+
+
+def _fetch_close_per_symbol(
+    symbols: list[str],
+    *,
+    period: str = TABLE_HISTORY_PERIOD,
+    history_months: int | None = None,
+) -> pd.DataFrame:
     """Per-symbol history fallback when bulk yf.download fails (common on cloud hosts)."""
+    fetch_kwargs = _yahoo_history_kwargs(period=period, history_months=history_months)
     series = {}
     for symbol in symbols:
         try:
-            hist = yf.Ticker(symbol).history(period=period)
+            hist = yf.Ticker(symbol).history(**fetch_kwargs)
             if hist is None or hist.empty or "Close" not in hist.columns:
                 continue
             close = hist["Close"].dropna()
@@ -60,22 +95,31 @@ def _fetch_close_per_symbol(symbols: list[str], period: str) -> pd.DataFrame:
 
 
 def download_close_prices(
-    symbols: list[str], period: str = TABLE_HISTORY_PERIOD
+    symbols: list[str],
+    period: str = TABLE_HISTORY_PERIOD,
+    *,
+    history_months: int | None = None,
 ) -> tuple[pd.DataFrame, str | None]:
     """
     Fetch close history for symbols.
 
     Returns (dataframe, error_or_warning). Tries bulk download first, then per-symbol.
+    When history_months is set it controls the Yahoo window for sync (Trends + TA).
     """
     symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
     if not symbols:
         return pd.DataFrame(), None
 
+    fetch_kwargs = _yahoo_history_kwargs(period=period, history_months=history_months)
     bulk_error = None
     frame = pd.DataFrame()
     try:
         bulk_data = yf.download(
-            symbols, period=period, progress=False, group_by="column", threads=True
+            symbols,
+            progress=False,
+            group_by="column",
+            threads=True,
+            **fetch_kwargs,
         )
         frame = _close_frame_from_bulk(bulk_data, symbols)
     except Exception as exc:
@@ -85,7 +129,9 @@ def download_close_prices(
     if not missing:
         return frame, None
 
-    fallback = _fetch_close_per_symbol(missing, period)
+    fallback = _fetch_close_per_symbol(
+        missing, period=period, history_months=history_months
+    )
     if not fallback.empty:
         if frame.empty:
             frame = fallback
@@ -113,17 +159,32 @@ def download_close_prices(
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_bulk_close(symbols_tuple, period=TABLE_HISTORY_PERIOD):
+def fetch_bulk_close(
+    symbols_tuple,
+    period=TABLE_HISTORY_PERIOD,
+    history_months: int | None = None,
+):
     """Bulk close prices for all symbols (cached)."""
-    frame, _note = download_close_prices(list(symbols_tuple), period)
+    frame, _note = download_close_prices(
+        list(symbols_tuple), period, history_months=history_months
+    )
     return frame
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_ticker_ohlc_history(ticker_symbol, period=DETAIL_HISTORY_PERIOD):
+def get_ticker_ohlc_history(
+    ticker_symbol,
+    period=DETAIL_HISTORY_PERIOD,
+    history_months: int | None = None,
+):
     """Full OHLC for Fibonacci/detail view — loaded only when needed."""
     try:
-        hist = yf.Ticker(ticker_symbol).history(period=period)
+        if history_months is not None:
+            hist = yf.Ticker(ticker_symbol).history(
+                start=history_start_date(history_months), auto_adjust=True
+            )
+        else:
+            hist = yf.Ticker(ticker_symbol).history(period=period)
         if hist is None or hist.empty:
             return pd.DataFrame()
         hist = hist.copy()

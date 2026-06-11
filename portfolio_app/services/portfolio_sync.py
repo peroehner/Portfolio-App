@@ -25,8 +25,9 @@ from portfolio_app.analysis.valuation_scores import (
     metrics_from_row,
     raw_metrics_to_display,
 )
-from portfolio_app.config import TABLE_HISTORY_PERIOD
+from portfolio_app.config import HISTORY_MONTHS_DEFAULT, SYNCED_HISTORY_MONTHS_KEY
 from portfolio_app.data.market_data import (
+    clamp_history_months,
     download_close_prices,
     fetch_portfolio_metadata_parallel,
     get_exchange_rate,
@@ -374,10 +375,26 @@ def _display_row_to_snapshot(
     )
 
 
+def resolve_history_months(history_months: int | None = None) -> int:
+    """Session history window for sync, or explicit override (tests)."""
+    if history_months is not None:
+        return clamp_history_months(history_months)
+    try:
+        import streamlit as st
+
+        from portfolio_app.ui.history_controls import history_months as session_history_months
+
+        return session_history_months()
+    except Exception:
+        return HISTORY_MONTHS_DEFAULT
+
+
 def run_network_refresh(
     df_port: pd.DataFrame,
     portfolio_id: int,
     repo: PortfolioRepository | None = None,
+    *,
+    history_months: int | None = None,
 ) -> PortfolioSyncState:
     """Refresh button — fetch Yahoo data, persist snapshots, update sync state."""
     repo = repo or PortfolioRepository()
@@ -393,8 +410,9 @@ def run_network_refresh(
 
         st.session_state.last_eur_rate = eur_rate
 
+    months = resolve_history_months(history_months)
     bulk_close, price_fetch_note = download_close_prices(
-        list(unique_symbols), TABLE_HISTORY_PERIOD
+        list(unique_symbols), history_months=months
     )
     from portfolio_app.analysis.portfolio_build import build_hist_by_symbol
 
@@ -464,4 +482,7 @@ def run_network_refresh(
         enriched_symbols=set(metadata_map.keys()),
         valuation_enriched=set(valuation_map.keys()),
     )
+    import streamlit as st
+
+    st.session_state[SYNCED_HISTORY_MONTHS_KEY] = months
     return sync_state

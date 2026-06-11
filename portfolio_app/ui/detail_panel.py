@@ -1,11 +1,16 @@
 """Technical analysis detail: chart, trends, Fibonacci, export sidebar."""
+import html as html_module
+
 import pandas as pd
 import streamlit as st
 
 from portfolio_app.analysis.fibonacci import compute_fibonacci_levels
 from portfolio_app.analysis.trends import find_multiple_trends
-from portfolio_app.config import DETAIL_HISTORY_PERIOD
-from portfolio_app.data.market_data import get_symbol_metadata, get_ticker_ohlc_history
+from portfolio_app.data.market_data import get_symbol_metadata
+from portfolio_app.ui.history_controls import (
+    load_portfolio_ohlc_history,
+    month_options_from_hist,
+)
 from portfolio_app.data.metadata import enrich_symbol_metadata, prioritize_metadata_symbol
 from portfolio_app.ui.charts import create_chart
 from portfolio_app.ui.components import get_trend_icon_html
@@ -21,6 +26,7 @@ from portfolio_app.services.ta_woi_service import (
     load_sticky_woi_for_portfolio,
     on_sticky_woi_toggle,
     on_window_controls_change,
+    persist_sticky_from_controls,
     sticky_woi_note_html,
 )
 from portfolio_app.services.session_context import load_active_portfolio
@@ -284,15 +290,7 @@ def _ensure_month_range(month_options):
 
 
 def _load_hist_for_ticker(selected_ticker, pick):
-    hist_full = get_ticker_ohlc_history(selected_ticker, DETAIL_HISTORY_PERIOD)
-    if hist_full.empty:
-        hist_full = pick["hist"].copy()
-        if getattr(hist_full.index, "tz", None) is not None:
-            hist_full.index = hist_full.index.tz_localize(None)
-        if "High" not in hist_full.columns:
-            hist_full["High"] = hist_full["Close"]
-            hist_full["Low"] = hist_full["Close"]
-    return hist_full
+    return load_portfolio_ohlc_history(selected_ticker, pick)
 
 
 def is_trend_overlay_enabled():
@@ -360,6 +358,10 @@ def _bump_end_backward():
 def _apply_reanalyse():
     st.session_state["calc_fib_start"] = st.session_state["sel_start_ui"]
     st.session_state["calc_fib_end"] = st.session_state["sel_end_ui"]
+    st.session_state["ui_fib_start"] = st.session_state["sel_start_ui"]
+    st.session_state["ui_fib_end"] = st.session_state["sel_end_ui"]
+    if st.session_state.get(STICKY_WOI_CHECKBOX_KEY):
+        persist_sticky_from_controls()
     on_window_controls_change()
     mark_preserve_table_selection()
 
@@ -560,6 +562,33 @@ def _resolve_est_target(pick, selected_ticker, curr_p):
         return None
 
 
+def _sidebar_panel_html(
+    metric_cards: list[str],
+    window_start: str,
+    window_end: str,
+    sticky_badge: str,
+    fib_anchor: str,
+    fib_rows_html: str,
+) -> str:
+    """Single HTML blob for st.html — avoids st.markdown breaking nested divs."""
+    return (
+        f'<div class="ta-side-panel">'
+        f'<div class="ta-side-section">'
+        f'<div class="ta-side-heading">Metrics</div>'
+        f'<div class="ta-metric-stack">{"".join(metric_cards)}</div>'
+        f"</div>"
+        f'<div class="ta-side-section">'
+        f'<div class="ta-side-heading">Fibonacci</div>'
+        f'<div class="ta-fib-window">'
+        f'<span class="ta-fib-range">'
+        f"{html_module.escape(str(window_start))} → {html_module.escape(str(window_end))}"
+        f"</span>{sticky_badge}</div>"
+        f'<div class="ta-fib-anchor">{html_module.escape(str(fib_anchor or ""))}</div>'
+        f"{fib_rows_html}"
+        f"</div></div>"
+    )
+
+
 def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
     st.markdown('<div class="tech-sidebar-anchor"></div>', unsafe_allow_html=True)
     curr_p = pick["data"]["🌐 Price"]
@@ -610,25 +639,16 @@ def _render_detail_sidebar(pick, selected_ticker, dynamic_fibs, fib_anchor):
         if get_sticky_woi(selected_ticker)
         else ""
     )
-    st.markdown(
-        f"""
-        <div class="ta-side-panel">
-          <div class="ta-side-section">
-            <div class="ta-side-heading">Metrics</div>
-            <div class="ta-metric-stack">{"".join(metric_cards)}</div>
-          </div>
-          <div class="ta-side-section">
-            <div class="ta-side-heading">Fibonacci</div>
-            <div class="ta-fib-window">
-              <span class="ta-fib-range">{window_start} → {window_end}</span>
-              {sticky_badge}
-            </div>
-            <div class="ta-fib-anchor">{fib_anchor}</div>
-            {_fib_rows_html(dynamic_fibs, curr_p)}
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.html(
+        _sidebar_panel_html(
+            metric_cards,
+            window_start,
+            window_end,
+            sticky_badge,
+            str(fib_anchor or ""),
+            _fib_rows_html(dynamic_fibs, curr_p),
+        ),
+        unsafe_allow_javascript=False,
     )
 
 
@@ -695,8 +715,11 @@ def render_detail_panel():
         active = load_active_portfolio()
         load_sticky_woi_for_portfolio(active.portfolio_id)
     hist_full = _load_hist_for_ticker(selected_ticker, pick)
-    available_months = hist_full.index.to_period("M").unique()
-    month_options = [d.strftime("%Y-%m") for d in available_months]
+    st.session_state["_ta_detail_hist_preview"] = hist_full
+    month_options = month_options_from_hist(hist_full)
+    if not month_options:
+        st.warning("No price history available for this symbol.")
+        return
     ensure_ta_window_for_symbol(selected_ticker, month_options)
     _ensure_month_range(month_options)
 

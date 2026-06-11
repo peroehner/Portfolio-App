@@ -138,10 +138,12 @@ class PortfolioSyncTestCase(unittest.TestCase):
         self.repo.replace_positions(self.portfolio.id, holdings)
 
         sync_state = run_network_refresh(
-            holdings, self.portfolio.id, repo=self.repo
+            holdings, self.portfolio.id, repo=self.repo, history_months=6
         )
 
         self.assertEqual(SYNC_STATUS_SUCCESS, sync_state.last_sync_status)
+        mock_prices.assert_called_once()
+        self.assertEqual(6, mock_prices.call_args.kwargs.get("history_months"))
         self.assertIsNotNone(sync_state.last_sync_at)
         snap = self.repo.get_symbol_snapshot(self.portfolio.id, "AAPL")
         self.assertIsNotNone(snap)

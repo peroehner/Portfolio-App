@@ -72,7 +72,7 @@ def extract_dividend_yield(info):
 def period_return(close_series, price, trading_days):
     """Percent change over `trading_days` trading days."""
     if len(close_series) < trading_days + 1:
-        return 0.0
+        return None
     past = close_series.iloc[-(trading_days + 1)]
     if past == 0 or pd.isna(past):
         return 0.0

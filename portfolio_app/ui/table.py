@@ -12,6 +12,7 @@ from portfolio_app.config import (
     TABLE_PNL_COLS,
     ROI_FOOTER_SUM_COLUMNS,
     TABLE_VIEW_COLUMNS,
+    HISTORY_MONTHS_PERSIST_KEY,
     VALUATION_COLS,
     VALUATION_LATE_COLS,
 )
@@ -31,7 +32,7 @@ from portfolio_app.session_keys import (
     PRESERVE_TABLE_SELECTION_KEY,
     portfolio_grid_widget_key,
 )
-from portfolio_app.ui.toolbar import render_portfolio_more_button
+from portfolio_app.ui.toolbar import is_portfolio_more_open, render_portfolio_more_button
 from portfolio_app.ui.holdings import (
     HOLDINGS_EDITOR_COLUMNS,
     ROI_EDITABLE_COLUMNS,
@@ -229,6 +230,7 @@ def _technical_controls_changed() -> bool:
         "calc_fib_end": st.session_state.get("calc_fib_end"),
         "fibo_trend_inspect": st.session_state.get("fibo_trend_inspect"),
         "sticky_woi_enabled": st.session_state.get("sticky_woi_enabled"),
+        "history_months": st.session_state.get(HISTORY_MONTHS_PERSIST_KEY),
     }
     previous = st.session_state.get("_last_tech_controls_state")
     st.session_state["_last_tech_controls_state"] = current
@@ -261,6 +263,13 @@ def prepare_table_selection_before_render(display_df) -> None:
     if _technical_controls_changed():
         prev_symbols = list(st.session_state.get("selected_symbols") or [])
         if prev_symbols:
+            if _should_keep_ta_chip_focus(prev_symbols):
+                st.session_state.selected_symbols = prev_symbols
+                if not display_df.empty:
+                    st.session_state.table_sel_rows = row_indices_for_symbols(
+                        display_df, prev_symbols
+                    )
+                return
             commit_selection_from_symbols(prev_symbols, display_df)
 
 
@@ -988,48 +997,52 @@ def render_portfolio_table_section():
 
     if view_name == "ROI":
         if not has_holdings:
-            st.caption("No symbols yet — add one in **Edit portfolio** below.")
+            if is_portfolio_more_open():
+                st.caption("No symbols yet — add one in **Edit portfolio** below.")
+            else:
+                st.caption("No symbols yet — tap **⋮** for portfolio actions.")
         render_portfolio_table_roi(summary_df, holdings_df, selection_df)
     elif not summary_df.empty:
         render_portfolio_table_readonly(summary_df, view_name, selection_df)
     else:
         st.caption("Load symbols to see analysis views (Standard, Trends, Valuation Growth).")
 
-    save_clicked, edited = _render_edit_portfolio_expander(portfolio_id, holdings_df)
+    if is_portfolio_more_open():
+        save_clicked, edited = _render_edit_portfolio_expander(portfolio_id, holdings_df)
 
-    if save_clicked:
-        editor_errors = validate_holdings_editor_df(edited)
-        try:
-            holdings_out = parse_holdings_editor_df(edited)
-        except ValueError as e:
-            set_holdings_save_error(portfolio_id, str(e))
-            st.rerun()
-        else:
-            if editor_errors:
-                st.warning("Optional fixes before save:")
-                for msg in editor_errors:
-                    st.caption(msg)
+        if save_clicked:
+            editor_errors = validate_holdings_editor_df(edited)
             try:
-                save_holdings_from_df(portfolio_id, holdings_out)
-                st.success("Portfolio saved.")
-                st.rerun()
+                holdings_out = parse_holdings_editor_df(edited)
             except ValueError as e:
                 set_holdings_save_error(portfolio_id, str(e))
                 st.rerun()
-            except Exception as e:
-                st.error(f"Could not save: {e}")
+            else:
+                if editor_errors:
+                    st.warning("Optional fixes before save:")
+                    for msg in editor_errors:
+                        st.caption(msg)
+                try:
+                    save_holdings_from_df(portfolio_id, holdings_out)
+                    st.success("Portfolio saved.")
+                    st.rerun()
+                except ValueError as e:
+                    set_holdings_save_error(portfolio_id, str(e))
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Could not save: {e}")
 
-    if view_name == "Valuation Growth":
-        results = st.session_state.get("all_results") or []
-        headline, detail_lines, holding_lines = build_valuation_legend_sections(
-            results,
-            portfolio_name=active.name,
-            valuation_loaded=bool(st.session_state.get("valuation_loaded")),
-            selected_symbols=st.session_state.get("selected_symbols") or [],
-        )
-        st.caption(headline)
-        with st.expander("P-Score values — all holdings", expanded=False):
-            if holding_lines:
-                st.code("\n".join(holding_lines), language=None)
-            for line in detail_lines:
-                st.caption(line)
+        if view_name == "Valuation Growth":
+            results = st.session_state.get("all_results") or []
+            headline, detail_lines, holding_lines = build_valuation_legend_sections(
+                results,
+                portfolio_name=active.name,
+                valuation_loaded=bool(st.session_state.get("valuation_loaded")),
+                selected_symbols=st.session_state.get("selected_symbols") or [],
+            )
+            st.caption(headline)
+            with st.expander("P-Score values — all holdings", expanded=False):
+                if holding_lines:
+                    st.code("\n".join(holding_lines), language=None)
+                for line in detail_lines:
+                    st.caption(line)

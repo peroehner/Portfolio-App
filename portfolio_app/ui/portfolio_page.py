@@ -128,8 +128,23 @@ def _holdings_analysis_signature(df_port) -> tuple:
     return tuple(rows)
 
 
+def _history_window_needs_resync() -> bool:
+    from portfolio_app.config import SYNCED_HISTORY_MONTHS_KEY
+    from portfolio_app.ui.history_controls import history_months
+
+    synced = st.session_state.get(SYNCED_HISTORY_MONTHS_KEY)
+    if synced is None:
+        return False
+    return history_months() != synced
+
+
 def _needs_analysis_reload(df_port, portfolio_id: int, portfolio_name: str) -> bool:
     if get_analysis_portfolio_key() != _analysis_key(portfolio_id, portfolio_name):
+        return True
+    if st.session_state.get("pending_network_refresh"):
+        return True
+    if _history_window_needs_resync():
+        st.session_state.pending_network_refresh = True
         return True
     loaded_sig = st.session_state.get("portfolio_holdings_signature")
     return _holdings_analysis_signature(df_port) != loaded_sig

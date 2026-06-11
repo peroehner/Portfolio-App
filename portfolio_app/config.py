@@ -18,8 +18,24 @@ BEAR_TREND_PATH = os.path.join(APP_DIR, "bear-trend.png")
 PORTFOLIO_FILE_CANDIDATES = ("myPortfolio.csv", "Sample-Portfolio.csv")
 CHART_HEIGHT = 340
 
-TABLE_HISTORY_PERIOD = "2y"
+TABLE_HISTORY_PERIOD = "2y"  # legacy fallback when history_months is unset
 DETAIL_HISTORY_PERIOD = "2y"
+# Global price-history window (sync + Trends + TA). Slider max = this many months.
+HISTORY_MONTHS_MAX = 24
+HISTORY_MONTHS_DEFAULT = 12
+HISTORY_MONTHS_MIN = 1
+# Persisted fetch preference (survives ⋮ panel close / slider unmount).
+HISTORY_MONTHS_PERSIST_KEY = "_history_months_persist"
+# Streamlit slider widget key only — never use for Yahoo fetch directly.
+HISTORY_MONTHS_WIDGET_KEY = "history_months_slider"
+# Months used for the last successful network sync (session).
+SYNCED_HISTORY_MONTHS_KEY = "_synced_history_months"
+# Backward-compatible aliases
+DETAIL_HISTORY_MAX_MONTHS = HISTORY_MONTHS_MAX
+TA_HISTORY_MONTHS_DEFAULT = HISTORY_MONTHS_DEFAULT
+TA_HISTORY_MONTHS_MIN = HISTORY_MONTHS_MIN
+TA_HISTORY_MONTHS_PERSIST_KEY = HISTORY_MONTHS_PERSIST_KEY
+TA_HISTORY_MONTHS_WIDGET_KEY = HISTORY_MONTHS_WIDGET_KEY
 METADATA_BATCH_SIZE = 2
 METADATA_POLL_SECONDS = 1.5
 ANALYST_LOADED_NOTICE_SEC = 3

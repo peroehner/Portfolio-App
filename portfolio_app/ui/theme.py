@@ -21,35 +21,13 @@ APP_CSS = """
     header[data-testid="stHeader"] {
         background: transparent;
     }
-    div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] {
-        align-items: center !important;
-        margin-bottom: 0.15rem !important;
+    div:has(> .app-header-row) + div[data-testid="stElementContainer"] [data-testid="stHtml"],
+    div:has(> .app-header-row) + div[data-testid="stHtml"] {
+        margin-bottom: 0.1rem !important;
     }
-    div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] [data-testid="column"] {
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-    }
-    div:has(> .app-header-row) + div[data-testid="stHorizontalBlock"] [data-testid="stImage"] img {
-        max-height: 72px;
-        width: auto;
-        object-fit: contain;
-        border-radius: 6px;
-    }
-    .app-headings {
-        min-width: 0;
-    }
-    .app-title {
-        font-size: 1.65rem;
-        font-weight: 1000;
-        color: #111827;
-        margin: 0;
-        padding: 0;
-        line-height: 1.2;
-        letter-spacing: -0.01em;
-    }
-    .app-subtitle {
-        margin: 0.16rem 0 0 0;
-        font-size: 1.02rem;
+    div:has(> .app-header-row) + div[data-testid="stElementContainer"] [data-testid="stHtml"] iframe,
+    div:has(> .app-header-row) + div[data-testid="stHtml"] iframe {
+        min-height: 78px !important;
     }
     .panel-account-label {
         font-size: 0.7rem;
@@ -544,13 +522,65 @@ APP_CSS = """
         align-items: center;
         justify-content: center;
     }
-    /* Second toolbar row: Portfolio (DB) + File (CSV) when ⋮ expanded */
+    /* ⋮ expanded — emphasized "more options" panel above table tabs */
+    .portfolio-toolbar-actions-anchor {
+        display: block !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        visibility: hidden !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) {
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: 0 !important;
+    }
     div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] {
-        --portfolio-toolbar-h: 2.25rem;
+        --portfolio-toolbar-h: 2.35rem;
+        --more-panel-accent: #0969da;
+        position: relative !important;
         align-items: center !important;
-        gap: 0.35rem !important;
-        margin-top: 0.2rem !important;
-        margin-bottom: 0.15rem !important;
+        gap: 0.5rem !important;
+        margin-top: 0.55rem !important;
+        margin-bottom: 0.5rem !important;
+        padding: 0.58rem 0.9rem 0.52rem 1.05rem !important;
+        border-radius: 10px !important;
+        border: 1.5px solid rgba(9, 105, 218, 0.36) !important;
+        background: linear-gradient(135deg, #f0f6fc 0%, #f6f8fa 52%, #eef2f6 100%) !important;
+        box-shadow:
+            0 1px 2px rgba(9, 105, 218, 0.08),
+            0 4px 14px rgba(9, 105, 218, 0.07),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"]::before {
+        content: "More options";
+        position: absolute;
+        top: -0.54rem;
+        left: 0.9rem;
+        padding: 0 0.42rem;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--more-panel-accent);
+        background: #f4f8fc;
+        line-height: 1.25;
+        border-radius: 4px;
+        pointer-events: none;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"]::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 14%;
+        bottom: 14%;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: linear-gradient(180deg, #54aeff 0%, #0969da 100%);
+        opacity: 0.88;
+        pointer-events: none;
     }
     div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         min-height: var(--portfolio-toolbar-h) !important;
@@ -805,6 +835,23 @@ APP_CSS = """
         box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06) !important;
         font-size: 1.28rem !important;
         line-height: 1 !important;
+    }
+    /* ⋮ expanded toolbar: Chart history slider in center column */
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) .portfolio-toolbar-group-label {
+        font-size: 0.72rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.04em !important;
+        text-transform: uppercase !important;
+        color: #64748b !important;
+        white-space: nowrap !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) [data-testid="stSlider"] {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }
+    div:has(> .portfolio-toolbar-actions-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) [data-testid="stCaptionContainer"] {
+        margin-top: 0 !important;
+        padding-top: 0.15rem !important;
     }
     div:has(.portfolio-view-tabs-anchor) [data-testid="stHorizontalBlock"]:has([data-testid="stRadio"]) > div[data-testid="column"]:last-child .stButton > button:hover {
         border-color: #b8c5d0 !important;

@@ -415,6 +415,8 @@ def render_portfolio_controls(
 
 def render_portfolio_toolbar_actions_row(*, on_import_click) -> None:
     """Second toolbar row: Portfolio left, File (CSV) right when ⋮ is expanded."""
+    from portfolio_app.ui.history_controls import render_history_months_controls
+
     active = load_active_portfolio()
     col_db, col_spacer, col_file = st.columns(
         [2, 5, 2],
@@ -426,6 +428,8 @@ def render_portfolio_toolbar_actions_row(*, on_import_click) -> None:
         active_name=active.name,
         portfolio_id=active.portfolio_id,
     )
+    loaded_hist = st.session_state.get("_ta_detail_hist_preview")
+    render_history_months_controls(col_spacer, hist=loaded_hist)
     render_portfolio_file_actions(
         col_file,
         active_name=active.name,

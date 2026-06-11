@@ -97,6 +97,49 @@ class TableSelectionTestCase(unittest.TestCase):
         self.assertEqual("OTEX", session["selected_symbol"])
         self.assertEqual("OTEX", session["ta_chart_symbol"])
 
+    @patch("portfolio_app.ui.table.st")
+    def test_technical_controls_preserve_ta_chip_focus(self, st_mock):
+        class SessionState(dict):
+            def __getattr__(self, name):
+                return self[name]
+
+            def __setattr__(self, name, value):
+                self[name] = value
+
+        session = SessionState(
+            selected_symbols=["GILD", "SAP"],
+            selected_symbol="GILD",
+            ta_chart_symbol="GILD",
+            ta_nav_index=0,
+            table_sel_rows=[0, 1],
+            sel_start_ui="2024-12",
+            sel_end_ui="2026-06",
+            calc_fib_start="2024-11",
+            calc_fib_end="2026-06",
+            fibo_trend_inspect=True,
+            sticky_woi_enabled=False,
+            _last_tech_controls_state={
+                "sel_start_ui": "2024-11",
+                "sel_end_ui": "2026-06",
+                "calc_fib_start": "2024-11",
+                "calc_fib_end": "2026-06",
+                "fibo_trend_inspect": True,
+                "sticky_woi_enabled": False,
+            },
+        )
+        st_mock.session_state = session
+        display_df = pd.DataFrame(
+            [
+                {"Symbol": "GILD", "📈 Total %": 5.0},
+                {"Symbol": "SAP", "📈 Total %": 10.0},
+            ]
+        )
+
+        prepare_table_selection_before_render(display_df)
+
+        self.assertEqual("GILD", session["selected_symbol"])
+        self.assertEqual("GILD", session["ta_chart_symbol"])
+
 
 if __name__ == "__main__":
     unittest.main()

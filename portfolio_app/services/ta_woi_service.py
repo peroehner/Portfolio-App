@@ -208,16 +208,11 @@ def on_sticky_woi_toggle() -> None:
 
 
 def on_window_controls_change() -> None:
+    """Dropdown/bump edits — keep symbol focus; calc updates only via Re-Analyse."""
+    symbol = str(st.session_state.get("ta_chart_symbol") or "").strip().upper()
+    if symbol:
+        _lock_ta_symbol_focus(symbol)
     sync_default_window_from_controls()
-    if st.session_state.get(STICKY_WOI_CHECKBOX_KEY):
-        start = st.session_state.get("sel_start_ui")
-        end = st.session_state.get("sel_end_ui")
-        if start and end:
-            st.session_state["calc_fib_start"] = start
-            st.session_state["calc_fib_end"] = end
-            st.session_state["ui_fib_start"] = start
-            st.session_state["ui_fib_end"] = end
-        persist_sticky_from_controls()
 
 
 def sticky_woi_note_html(symbol: str) -> str:
